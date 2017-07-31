@@ -5,7 +5,8 @@
 Usage: bomreader.py [-h] [-v] jsonfile1 [jsonfile 2 ...]
 Description:
     read BoM json data from file(s) for locations
-    calculate night, morning, day, evening typical temps + range, cloudiness
+    calculate typical temps + range, relative humidity (& cloudiness)
+    for night, morning, day, evening
 
 Author: Justin Lee, July 2017
 
@@ -100,6 +101,17 @@ def calcTypicalTempSpread(dbc, locid):
     return result
 
 
+# average humidity within daily intervals, across all samples for given loc
+# returns a dict of humidity, keys are night, morn, day, eve
+def calcTypicalHumidity(dbc, locid):
+    qry_strs = buildDailyIntervalQueries('AVG(relative_humidity)', locid)
+    result = {}
+    for qry in qry_strs:
+        dbc.execute(qry_strs[qry])
+        result[qry] = float(dbc.fetchone()[0])
+    return result
+
+
 # determine typical cloudiness (0-8) within a daily interval for given loc
 # returns a dict of cloud oktas, keys are night, morn, day, eve
 def calcCloudiness(dbc, locid):
@@ -116,8 +128,10 @@ def calcCloudiness(dbc, locid):
 
 
 # print the results obtained from calc*() queries for a given location
-def printLocationSummary(locname, temps, spread, cloud):
-    print("{}: overnight {:.1f} +/-{:.1f} {}/8, morning {:.1f} +/-{:.1f} {}/8, daytime {:.1f} +/-{:.1f} {}/8, evening {:.1f} +/-{:.1f} {}/8".format(locname, temps['night'], (spread['night']/2), cloud['night'], temps['morn'], (spread['morn']/2), cloud['morn'], temps['day'], (spread['day']/2), cloud['day'], temps['eve'], (spread['eve']/2), cloud['eve']))
+def printLocationSummary(locname, temps, spread, humidity, cloud):
+    # Note: cloud oktas doesn't appear useful, to print, use for eg:
+    #       print("{}/8".format(cloud['morn']))
+    print("{}: overnight {:.1f} +/-{:.1f} {:.0f}%, morning {:.1f} +/-{:.1f} {:.0f}%, daytime {:.1f} +/-{:.1f} {:.0f}%, evening {:.1f} +/-{:.1f} {:.0f}%".format(locname, temps['night'], (spread['night']/2), humidity['night'], temps['morn'], (spread['morn']/2), humidity['morn'], temps['day'], (spread['day']/2), humidity['day'], temps['eve'], (spread['eve']/2), humidity['eve']))
 
 
 # return a list of location id, name records
@@ -153,17 +167,18 @@ def printObservationDatesSummary(obs_range):
 
 
 # run an SQL query to
-# get the average and spread of temperature, and oktas of cloudiness
+# get the average and spread of temperature, relative humidity
 # for each date, time interval and location
 def getDailyObservations(dbc):
     # note use of digit prefix on tod for desired ordering
     # will use a dict to convert results for printing:
     # eg: '1-morn' to 'morning'
     qrystr = """
-    SELECT date, tod, name, ava, tspread
+    SELECT date, tod, name, ava, tspread, avr
     FROM (
         SELECT AVG(air_temp) AS ava,
                (MAX(air_temp)-MIN(air_temp)) as tspread,
+               AVG(relative_humidity) as avr,
                '0-night' AS tod,
                date, location_id
         FROM datenorm_observation
@@ -173,6 +188,7 @@ def getDailyObservations(dbc):
         UNION
         SELECT avg(air_temp) AS ava,
                (MAX(air_temp)-MIN(air_temp)) as tspread,
+               AVG(relative_humidity) as avr,
                '1-morn' AS tod,
                date, location_id
         FROM datenorm_observation
@@ -181,6 +197,7 @@ def getDailyObservations(dbc):
         UNION
         SELECT AVG(air_temp) AS ava,
                (MAX(air_temp)-MIN(air_temp)) as tspread,
+               AVG(relative_humidity) as avr,
                '2-day' AS tod,
                date, location_id
         FROM datenorm_observation
@@ -189,6 +206,7 @@ def getDailyObservations(dbc):
         UNION
         SELECT AVG(air_temp) AS ava,
                (MAX(air_temp)-MIN(air_temp)) as tspread,
+               AVG(relative_humidity) as avr,
                '3-eve' AS tod,
                date, location_id
         FROM datenorm_observation
@@ -221,9 +239,9 @@ def printObsByDate(observation_list):
     }
 
     for obs in observation_list:
-        print("{} {}: {} {:.1f} +/-{:.1f}".format(
+        print("{} {}: {} {:.1f} +/-{:.1f} {:.0f}%".format(
             obs['date'], todname[obs['tod']], obs['name'],
-            obs['ava'], (obs['tspread']/2)))
+            obs['ava'], (obs['tspread']/2), obs['avr']))
 
 
 # create a view to deal with overnight observations that straddle dates
@@ -239,6 +257,7 @@ def create_date_normalised_observations(dbc):
             time,
             air_temp,
             apparent_temp,
+            relative_humidity,
             cloud_oktas
         FROM observation WHERE time >= TIME(\"{}\")
         AND date < (SELECT MAX(date) FROM observation)
@@ -247,6 +266,7 @@ def create_date_normalised_observations(dbc):
             time,
             air_temp,
             apparent_temp,
+            relative_humidity,
             cloud_oktas
         FROM observation WHERE time < TIME(\"{}\");
         """.format(OVERNIGHT_HOUR_START, OVERNIGHT_HOUR_START)
@@ -265,6 +285,11 @@ def create_date_normalised_observations(dbc):
 # extract relevant information from observation dictionary
 # and add to database
 def addObservation(dbc, obs):
+    # occasionally data is missing for a location/time
+    if obs['air_temp'] is None:
+        dstr = "Invalid data! Skipping observation {}".format(obs)
+        logging.warn(dstr)
+        return
     dstr = "adding observation {} to DB".format(obs)
     logging.debug(dstr)
     location_id = int(obs['wmo'])
@@ -275,11 +300,12 @@ def addObservation(dbc, obs):
     obs_time=obsdatetime.strftime('%H:%M:%S')
     air_temp = float(obs['air_temp'])
     apparent_temp = float(obs['apparent_t'])
+    relative_humidity = float(obs['rel_hum'])
     cloud_oktas = obs['cloud_oktas']
     if cloud_oktas is None:
         cloud_oktas = '-1' # will ignore in DB select
     cloud_oktas = int(cloud_oktas)
-    dbc.execute("INSERT OR IGNORE INTO observation(location_id, date, time, air_temp, apparent_temp, cloud_oktas) VALUES(?, ?, ?, ?, ?, ?)", (location_id, obs_date, obs_time, air_temp, apparent_temp, cloud_oktas))
+    dbc.execute("INSERT OR IGNORE INTO observation(location_id, date, time, air_temp, apparent_temp, relative_humidity, cloud_oktas) VALUES(?, ?, ?, ?, ?, ?, ?)", (location_id, obs_date, obs_time, air_temp, apparent_temp, relative_humidity, cloud_oktas))
 
 
 def processObservations(dbc, data):
@@ -312,6 +338,7 @@ def initDB(dbc):
             time TEXT,
             air_temp REAL,
             apparent_temp REAL,
+            relative_humidity REAL,
             -- cloud TEXT,
             cloud_oktas INTEGER,
             PRIMARY KEY(location_id, date, time)
@@ -411,8 +438,9 @@ def main(argv):
         for loc in locations:
             typical_temps=calcTypicalTemps(dbc, loc['id'])
             typical_spread=calcTypicalTempSpread(dbc, loc['id'])
+            typical_humidity=calcTypicalHumidity(dbc, loc['id'])
             typical_cloud=calcCloudiness(dbc, loc['id'])
-            printLocationSummary(loc['name'], typical_temps, typical_spread, typical_cloud)
+            printLocationSummary(loc['name'], typical_temps, typical_spread, typical_humidity, typical_cloud)
 
 
 if __name__ =="__main__":
