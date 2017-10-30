@@ -12,6 +12,7 @@ locations=( \
     ["Proserpine"]="94365" \
     ["Bowen_AP"]="94383" \
     ["Townsville_AP"]="94294" \
+    ["Townsville_MS"]="94272" \
     ["Innisfail_AP"]="94280" \
     ["Cairns"]="94287" \
     ["Cairns_RC"]="94288" \
@@ -28,6 +29,7 @@ statecodes=( \
     ["Proserpine"]="IDQ60801/IDQ60801" \
     ["Bowen_AP"]="IDQ60801/IDQ60801" \
     ["Townsville_AP"]="IDQ60801/IDQ60801" \
+    ["Townsville_MS"]="IDQ60801/IDQ60801" \
     ["Innisfail_AP"]="IDQ60801/IDQ60801" \
     ["Cairns"]="IDQ60801/IDQ60801" \
     ["Cairns_RC"]="IDQ60801/IDQ60801" \
@@ -47,13 +49,20 @@ equivlocs=( \
     ["proserpine"]="Proserpine" \
     ["bowen"]="Bowen_AP" \
     ["townsville"]="Townsville_AP" \
+    ["Townsville"]="Townsville_AP" \
     ["tsv"]="Townsville_AP" \
+    ["townsville_ms"]="Townsville_MS" \
+    ["MtStuart"]="Townsville_MS" \
+    ["mtstuart"]="Townsville_MS" \
     ["innisfail"]="Innisfail_AP" \
-    ["cairns"]="Cairns_RC" \
+    ["cairns_rc"]="Cairns_RC" \
+    ["cairns_ap"]="Cairns" \
+    ["Cairns_AP"]="Cairns" \
     ["cns"]="Cairns" \
     ["mareeba"]="Mareeba" \
     ["cooktown"]="Cooktown" \
     ["darwin"]="Darwin_AP" \
+    ["Darwin"]="Darwin_AP" \
 )
 
 if [ $# -gt 0 ]; then
