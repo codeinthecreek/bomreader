@@ -299,7 +299,10 @@ def addObservation(dbc, obs):
     obs_date=obsdatetime.strftime('%Y-%m-%d')
     obs_time=obsdatetime.strftime('%H:%M:%S')
     air_temp = float(obs['air_temp'])
-    apparent_temp = float(obs['apparent_t'])
+    apparent_temp = obs['apparent_t']
+    if apparent_temp is None:
+        apparent_temp = obs['air_temp'] # should be close enough
+    apparent_temp = float(apparent_temp )
     relative_humidity = float(obs['rel_hum'])
     cloud_oktas = obs['cloud_oktas']
     if cloud_oktas is None:
