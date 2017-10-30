@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Note:
+# Qld observations accessed through: http://www.bom.gov.au/qld/observations/qldall.shtml
+# NT observations accessed through: http://www.bom.gov.au/nt/observations/ntall.shtml
+
 declare -A locations
 locations=( \
     ["Brisbane_AP"]="94578" \
@@ -13,6 +17,23 @@ locations=( \
     ["Cairns_RC"]="94288" \
     ["Mareeba"]="95286" \
     ["Cooktown"]="95283" \
+    ["Darwin_AP"]="94120" \
+)
+
+declare -A statecodes
+statecodes=( \
+    ["Brisbane_AP"]="IDQ60801/IDQ60801" \
+    ["Rockhampton"]="IDQ60801/IDQ60801" \
+    ["Mackay_AP"]="IDQ60801/IDQ60801" \
+    ["Proserpine"]="IDQ60801/IDQ60801" \
+    ["Bowen_AP"]="IDQ60801/IDQ60801" \
+    ["Townsville_AP"]="IDQ60801/IDQ60801" \
+    ["Innisfail_AP"]="IDQ60801/IDQ60801" \
+    ["Cairns"]="IDQ60801/IDQ60801" \
+    ["Cairns_RC"]="IDQ60801/IDQ60801" \
+    ["Mareeba"]="IDQ60801/IDQ60801" \
+    ["Cooktown"]="IDQ60801/IDQ60801" \
+    ["Darwin_AP"]="IDD60801/IDD60801" \
 )
 
 declare -A equivlocs
@@ -32,11 +53,13 @@ equivlocs=( \
     ["cns"]="Cairns" \
     ["mareeba"]="Mareeba" \
     ["cooktown"]="Cooktown" \
+    ["darwin"]="Darwin_AP" \
 )
 
 if [ $# -gt 0 ]; then
     loc=${equivlocs[$1]} # check if a shorthand has been used first
     [ -z "$loc" ] && loc=$1
+    scode=${statecodes[$loc]}
     lcode=${locations[$loc]}
     shift
 fi
@@ -61,11 +84,11 @@ if [ -z "$lcode" ]; then
 fi
 
 echo >&2 "location chosen is $loc with code $lcode"
-echo >&2 "retrieving URL http://www.bom.gov.au/fwo/IDQ60801/IDQ60801.${lcode}.json"
+echo >&2 "retrieving URL http://www.bom.gov.au/fwo/${scode}.${lcode}.json"
 echo >&2 "writing to file ${loc}-$(/bin/date +\%F).json"
 
-#echo curl "http://www.bom.gov.au/fwo/IDQ60801/IDQ60801.${lcode}.json" ">" "${loc}-$(/bin/date +\%F)"
-curl "http://www.bom.gov.au/fwo/IDQ60801/IDQ60801.${lcode}.json" 2>/dev/null > "${loc}-$(/bin/date +\%F)".json
+#echo curl "http://www.bom.gov.au/fwo/${scode}.${lcode}.json" ">" "${loc}-$(/bin/date +\%F)"
+curl "http://www.bom.gov.au/fwo/${scode}.${lcode}.json" 2>/dev/null > "${loc}-$(/bin/date +\%F)".json
 
 echo >&2 "done!"
 
