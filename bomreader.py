@@ -2,7 +2,7 @@
 
 """
 
-Usage: bomreader.py [-h] [-v] jsonfile1 [jsonfile 2 ...]
+Usage: bomreader.py [-h] [-d] jsonfile1 [jsonfile 2 ...]
 Description:
     read BoM json data from file(s) for locations
     calculate typical temps + range, relative humidity (& cloudiness)
@@ -73,7 +73,7 @@ def buildDailyIntervalQueries(select_str, locid, extra_conditions='', group_by='
             'eve': qtemplate.format(evestr),
             'night': qtemplate.format(nightstr)
     }
-    dstr = "buildDailyIntervalQueries() built query strings like: {}".format(qry_strs['morn'])
+    dstr = "buildDailyIntervalQueries() built query strings:\n{}\n{}\n{}\n{}".format(qry_strs['morn'], qry_strs['day'], qry_strs['eve'], qry_strs['night'])
     logging.debug(dstr)
 
     return qry_strs
@@ -83,6 +83,30 @@ def buildDailyIntervalQueries(select_str, locid, extra_conditions='', group_by='
 # returns a dict of temps, keys are night, morn, day, eve
 def calcTypicalTemps(dbc, locid):
     qry_strs = buildDailyIntervalQueries('AVG(air_temp)', locid)
+    result = {}
+    for qry in qry_strs:
+        dbc.execute(qry_strs[qry])
+        result[qry] = float(dbc.fetchone()[0])
+    return result
+
+
+# this is done slightly differently to the other calcTypical.. functions
+# it uses the daytoday_avgt_diffs view, instead of directly accessing
+# datenorm_observation, which it is derived from
+def calcTypicalTempDiff(dbc, locname):
+
+    qtemplate = "SELECT AVG(ABS(tdiff)) FROM daytoday_avgt_diffs WHERE name = '{}' AND tod = '{}'"
+    # the resulting complete query strings
+    qry_strs = {
+            'morn': qtemplate.format(locname, '1-morn'),
+            'day': qtemplate.format(locname, '2-day'),
+            'eve': qtemplate.format(locname, '3-eve'),
+            'night': qtemplate.format(locname, '0-night')
+    }
+
+    dstr = "calcTypicalTempDiff() built query strings:\n{}\n{}\n{}\n{}".format(qry_strs['morn'], qry_strs['day'], qry_strs['eve'], qry_strs['night'])
+    logging.debug(dstr)
+
     result = {}
     for qry in qry_strs:
         dbc.execute(qry_strs[qry])
@@ -128,10 +152,10 @@ def calcCloudiness(dbc, locid):
 
 
 # print the results obtained from calc*() queries for a given location
-def printLocationSummary(locname, temps, spread, humidity, cloud):
+def printLocationSummary(locname, temps, spread, diffs, humidity, cloud):
     # Note: cloud oktas doesn't appear useful, to print, use for eg:
     #       print("{}/8".format(cloud['morn']))
-    print("{}: overnight {:.1f} +/-{:.1f} {:.0f}%, morning {:.1f} +/-{:.1f} {:.0f}%, daytime {:.1f} +/-{:.1f} {:.0f}%, evening {:.1f} +/-{:.1f} {:.0f}%".format(locname, temps['night'], (spread['night']/2), humidity['night'], temps['morn'], (spread['morn']/2), humidity['morn'], temps['day'], (spread['day']/2), humidity['day'], temps['eve'], (spread['eve']/2), humidity['eve']))
+    print("{}: overnight {:.1f} +/-{:.1f} (d {:.1f}) {:.0f}%, morning {:.1f} +/-{:.1f} (d {:.1f}) {:.0f}%, daytime {:.1f} +/-{:.1f} (d {:.1f}) {:.0f}%, evening {:.1f} +/-{:.1f} (d {:.1f}) {:.0f}%".format(locname, temps['night'], (spread['night']/2), diffs['night'], humidity['night'], temps['morn'], (spread['morn']/2), diffs['morn'], humidity['morn'], temps['day'], (spread['day']/2), diffs['day'], humidity['day'], temps['eve'], (spread['eve']/2), diffs['eve'], humidity['eve']))
 
 
 # return a list of location id, name records
@@ -166,14 +190,45 @@ def printObservationDatesSummary(obs_range):
     print("Observations cover {} days, from {} to {}".format(obs_range['days'], obs_range['first'], obs_range['last']))
 
 
-# run an SQL query to
-# get the average and spread of temperature, relative humidity
-# for each date, time interval and location
-def getDailyObservations(dbc):
+# calculate the change in avg temps from one day to next
+# ideally this would be done with a SQL LAG function
+# but sqlite doesn't support it
+# ref: https://stackoverflow.com/questions/10003313/create-a-sqlite-view-where-a-row-depends-on-the-previous-row
+def calcDayToDayTODAvgTempDiffs(dbc):
+    view_str = """
+    DROP VIEW IF EXISTS daytoday_avgt_diffs;
+    CREATE VIEW daytoday_avgt_diffs AS
+    SELECT d1.date as date, d1.tod as tod, d1.name as name,
+        d1.ava-d2.ava as tdiff
+    FROM
+        daily_tod_stats d1, daily_tod_stats d2,
+        (SELECT t2.date AS date1, MAX(t1.date) AS date2,
+            t1.tod AS tod, t1.name AS name
+        FROM daily_tod_stats t1, daily_tod_stats t2
+        WHERE t1.date < t2.date
+            AND t1.tod = t2.tod
+            AND t1.name = t2.name
+        GROUP BY t2.date, t2.tod, t2.name) AS prev
+    WHERE d1.date = prev.date1 AND d2.date = prev.date2
+        AND d1.tod = prev.tod AND d2.tod = prev.tod
+        AND d1.name = prev.name AND d2.name = prev.name
+    ORDER BY date, tod, name
+    ;
+    """
+    dstr = "calcDayToDayTODAvgTempDiffs() creating view with: {}".format(view_str)
+    logging.debug(dstr)
+
+    dbc.executescript(view_str)
+
+
+# create view of date, time of day stats
+def createDailyTODStats(dbc):
     # note use of digit prefix on tod for desired ordering
     # will use a dict to convert results for printing:
     # eg: '1-morn' to 'morning'
-    qrystr = """
+    view_str = """
+    DROP VIEW IF EXISTS daily_tod_stats;
+    CREATE VIEW daily_tod_stats AS
     SELECT date, tod, name, ava, tspread, avr
     FROM (
         SELECT AVG(air_temp) AS ava,
@@ -221,6 +276,29 @@ def getDailyObservations(dbc):
             DAYTIME_HOUR_START, DAYTIME_HOUR_END,
             EVENING_HOUR_START, EVENING_HOUR_END)
 
+    dstr = "createDailyTODStats() creating view with: {}".format(view_str)
+    logging.debug(dstr)
+
+    dbc.executescript(view_str)
+
+
+# run an SQL query to get:
+#     average, daily change and spread of temperature, relative humidity
+# for each date, time interval and location
+def getDailyObservations(dbc):
+    qrystr = """
+    SELECT daily_tod_stats.date AS date,
+           daily_tod_stats.tod AS tod,
+           daily_tod_stats.name AS name,
+           daily_tod_stats.ava as ava,
+           daytoday_avgt_diffs.tdiff as tdiff,
+           daily_tod_stats.tspread as tspread,
+           daily_tod_stats.avr as avr
+    FROM daily_tod_stats
+    NATURAL LEFT OUTER JOIN daytoday_avgt_diffs
+    ORDER BY date, tod, name
+    """
+
     dstr = "getDailyObservations() executing query string: {}".format(qrystr)
     logging.debug(dstr)
 
@@ -238,10 +316,17 @@ def printObsByDate(observation_list):
             '3-eve': 'evening',
     }
 
+    dstr = "printObsByDate() observation_list contains {} elements".format(len(observation_list))
+    logging.debug(dstr)
+
     for obs in observation_list:
-        print("{} {}: {} {:.1f} +/-{:.1f} {:.0f}%".format(
+        # the first day won't have a tdiff value, it will be None
+        tdiff = obs['tdiff']
+        if tdiff is None:
+            tdiff = 0.0
+        print("{} {}: {} {:.1f} +/-{:.1f} (d={:.1f}) {:.0f}%".format(
             obs['date'], todname[obs['tod']], obs['name'],
-            obs['ava'], (obs['tspread']/2), obs['avr']))
+            obs['ava'], (obs['tspread']/2), tdiff, obs['avr']))
 
 
 # create a view to deal with overnight observations that straddle dates
@@ -361,11 +446,11 @@ def initDB(dbc):
 def main(argv):
 
     debug = 0
-    paramstr = "[-h] [-v] jsonfile1 [jsonfile 2 ...]"
+    paramstr = "[-h] [-d] jsonfile1 [jsonfile 2 ...]"
     usagestr = "Usage: {} {}".format(sys.argv[0], paramstr)
 
     try:
-        options, remainder = getopt.gnu_getopt(argv[1:],"hv")
+        options, remainder = getopt.gnu_getopt(argv[1:],"hd")
     except getopt.GetoptError:
         print(usagestr)
         sys.exit(2)
@@ -376,7 +461,7 @@ def main(argv):
             sys.exit()
         #elif opt == '-l':
         #    debug = int(arg)
-        elif opt == '-v':
+        elif opt == '-d':
             debug = 1
         else:
             assert False, "unhandled option"
@@ -402,7 +487,8 @@ def main(argv):
         # create temporary filename in current working directory
         #pid = os.getpid() 
         cwd=os.getcwd()
-        with tempfile.NamedTemporaryFile(delete=True, dir=cwd, suffix='.sqlite') as tmpf:
+        #with tempfile.NamedTemporaryFile(delete=True, dir=cwd, suffix='.sqlite') as tmpf:
+        with tempfile.NamedTemporaryFile(delete=False, dir=cwd, suffix='.sqlite') as tmpf:
             tempfname=tmpf.name
         dstr = "using temp file {} for database".format(tempfname)
         logging.info(dstr)
@@ -425,9 +511,14 @@ def main(argv):
             with open(fn, 'r') as f:
                 data = json.load(f)
             processObservations(dbc, data['observations']['data'])
+
         # normalise dates to deal with overnight observations
         create_date_normalised_observations(dbc)
 
+        # generate daily stats for each time of day
+        createDailyTODStats(dbc)
+        # and diffs between consecutive days
+        calcDayToDayTODAvgTempDiffs(dbc)
         # get a day by day observation report for all locations
         daily_obs_list = getDailyObservations(dbc)
         printObsByDate(daily_obs_list)
@@ -441,9 +532,11 @@ def main(argv):
         for loc in locations:
             typical_temps=calcTypicalTemps(dbc, loc['id'])
             typical_spread=calcTypicalTempSpread(dbc, loc['id'])
+            typical_tdiff=calcTypicalTempDiff(dbc, loc['name'])
             typical_humidity=calcTypicalHumidity(dbc, loc['id'])
             typical_cloud=calcCloudiness(dbc, loc['id'])
-            printLocationSummary(loc['name'], typical_temps, typical_spread, typical_humidity, typical_cloud)
+            # TODO: calc max and min values overdate range for each
+            printLocationSummary(loc['name'], typical_temps, typical_spread, typical_tdiff, typical_humidity, typical_cloud)
 
 
 if __name__ =="__main__":
