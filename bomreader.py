@@ -79,10 +79,11 @@ def buildDailyIntervalQueries(select_str, locid, extra_conditions='', group_by='
     return qry_strs
 
 
-# average temps within the daily intervals, across all samples for given loc
+# AVG/MAX/MIN temps within the daily intervals, across all samples for loc
 # returns a dict of temps, keys are night, morn, day, eve
-def calcTypicalTemps(dbc, locid):
-    qry_strs = buildDailyIntervalQueries('AVG(air_temp)', locid)
+def calcTypicalTemps(dbc, locid, fn):
+    qryfn = "{}(air_temp)".format(fn) # fn is AVG, MIN or MAX
+    qry_strs = buildDailyIntervalQueries(qryfn, locid)
     result = {}
     for qry in qry_strs:
         dbc.execute(qry_strs[qry])
@@ -152,10 +153,26 @@ def calcCloudiness(dbc, locid):
 
 
 # print the results obtained from calc*() queries for a given location
-def printLocationSummary(locname, temps, spread, diffs, humidity, cloud):
+def printLocationSummary(locname, temps, tranges, spread, diffs, humidity, cloud):
     # Note: cloud oktas doesn't appear useful, to print, use for eg:
     #       print("{}/8".format(cloud['morn']))
-    print("{}: overnight {:.1f} +/-{:.1f} (d {:.1f}) {:.0f}%, morning {:.1f} +/-{:.1f} (d {:.1f}) {:.0f}%, daytime {:.1f} +/-{:.1f} (d {:.1f}) {:.0f}%, evening {:.1f} +/-{:.1f} (d {:.1f}) {:.0f}%".format(locname, temps['night'], (spread['night']/2), diffs['night'], humidity['night'], temps['morn'], (spread['morn']/2), diffs['morn'], humidity['morn'], temps['day'], (spread['day']/2), diffs['day'], humidity['day'], temps['eve'], (spread['eve']/2), diffs['eve'], humidity['eve']))
+
+    tod_strs = {
+            'morn': 'morning',
+            'day': 'daytime',
+            'eve': 'evening',
+            'night': 'overnight'
+    }
+
+    for tod in ('night', 'morn', 'day', 'eve'):
+        print("{}: {} {:.1f} +/-{:.1f} [range {:.1f} - {:.1f}; interday +/-{:.1f}] @ {:.0f}%".format(
+            locname, tod_strs[tod],
+            temps[tod], (spread[tod]/2),
+            tranges[tod]['min'], tranges[tod]['max'],
+            diffs[tod],
+            humidity[tod]))
+
+    #print("{}: evening {:.1f} +/-{:.1f} (d {:.1f}) {:.0f}%".format(locname, temps['night'], (spread['night']/2), diffs['night'], humidity['night'], temps['morn'], (spread['morn']/2), diffs['morn'], humidity['morn'], temps['day'], (spread['day']/2), diffs['day'], humidity['day'], temps['eve'], (spread['eve']/2), diffs['eve'], humidity['eve']))
 
 
 # return a list of location id, name records
@@ -307,6 +324,29 @@ def getDailyObservations(dbc):
     return rows
 
 
+# get max and min values for ava for specified loc and tod
+def calcRangeTypicalTemps(dbc, locname, tod):
+    qrystr = """
+    SELECT 
+           MIN(ava) AS min_ava,
+           MAX(ava) AS max_ava
+    FROM daily_tod_stats
+    WHERE name = '{}' AND tod = '{}'
+    """.format(locname, tod)
+
+    dstr = "calcRangeTypicalTemps() executing query string: {}".format(qrystr)
+    logging.debug(dstr)
+
+    dbc.execute(qrystr)
+    row = dbc.fetchone()
+
+    trange = {
+            'min': float(row[0]),
+            'max': float(row[1])
+    }
+    return trange
+
+
 # print results obtained from getDailyObservations() query
 def printObsByDate(observation_list):
     todname = {
@@ -327,6 +367,23 @@ def printObsByDate(observation_list):
         print("{} {}: {} {:.1f} +/-{:.1f} (d={:.1f}) {:.0f}%".format(
             obs['date'], todname[obs['tod']], obs['name'],
             obs['ava'], (obs['tspread']/2), tdiff, obs['avr']))
+
+
+# returns dict of dict: tod -> max/min -> value
+def getRangeAvgTemps(dbc, loc):
+    obsrange = {}
+    tods = {
+            'night': '0-night',
+            'morn': '1-morn',
+            'day': '2-day',
+            'eve': '3-eve',
+    }
+
+    for tod in tods:
+        obsrange[tod] = calcRangeTypicalTemps(dbc, loc, tods[tod])
+
+    return obsrange
+
 
 
 # create a view to deal with overnight observations that straddle dates
@@ -530,13 +587,15 @@ def main(argv):
         # calc typical temps, temp spread, cloudiness for each location
         locations=getLocations(dbc) # list of location records
         for loc in locations:
-            typical_temps=calcTypicalTemps(dbc, loc['id'])
+            typical_temps=calcTypicalTemps(dbc, loc['id'], 'AVG')
+            #min_temps=calcTypicalTemps(dbc, loc['id'], 'MIN')
+            #max_temps=calcTypicalTemps(dbc, loc['id'], 'MAX')
+            temp_range=getRangeAvgTemps(dbc, loc['name'])
             typical_spread=calcTypicalTempSpread(dbc, loc['id'])
             typical_tdiff=calcTypicalTempDiff(dbc, loc['name'])
             typical_humidity=calcTypicalHumidity(dbc, loc['id'])
             typical_cloud=calcCloudiness(dbc, loc['id'])
-            # TODO: calc max and min values overdate range for each
-            printLocationSummary(loc['name'], typical_temps, typical_spread, typical_tdiff, typical_humidity, typical_cloud)
+            printLocationSummary(loc['name'], typical_temps, temp_range, typical_spread, typical_tdiff, typical_humidity, typical_cloud)
 
 
 if __name__ =="__main__":
