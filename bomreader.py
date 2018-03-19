@@ -1,18 +1,25 @@
 #!/usr/bin/env python
 
 """
+bomreader.py: process and present BoM weather observation data as typical
+    temperature & humidity for periods of day, for each location, day
+    and summarised for entire date range.
 
 Usage: bomreader.py [-h] [-d] jsonfile1 [jsonfile 2 ...]
+
 Description:
-    read BoM json data from file(s) for locations
-    calculate typical temps + range, relative humidity (& cloudiness)
-    for night, morning, day, evening
+    bomreader.py is used to process JSON files of weather observations
+    (each file is for a single location and covers up to 72 hours of data)
+    obtained from BoM (http://www.bom.gov.au).
+    The provided data is used to calculate the typical temperatures & range,
+    relative humidity (& cloudiness) for night, morning, day and evening
+    over the time period contained in the provided data.
+    This gives a more accurate reflection of weather & climate (for comparison),
+    as opposed to just maximum and minimum temperatures.
 
-Author: Justin Lee, July 2017
-
-Note:
-    useful ref for json: https://www.safaribooksonline.com/library/view/python-cookbook-3rd/9781449357337/ch06s02.html
+Author: Justin Lee, July 2017.
 """
+
 
 import sys
 import getopt
@@ -172,7 +179,8 @@ def printLocationSummary(locname, temps, tranges, spread, diffs, humidity, cloud
             diffs[tod],
             humidity[tod]))
 
-    #print("{}: evening {:.1f} +/-{:.1f} (d {:.1f}) {:.0f}%".format(locname, temps['night'], (spread['night']/2), diffs['night'], humidity['night'], temps['morn'], (spread['morn']/2), diffs['morn'], humidity['morn'], temps['day'], (spread['day']/2), diffs['day'], humidity['day'], temps['eve'], (spread['eve']/2), diffs['eve'], humidity['eve']))
+    #dstr = "{}: evening {:.1f} +/-{:.1f} (d {:.1f}) {:.0f}%".format(locname, temps['night'], (spread['night']/2), diffs['night'], humidity['night'], temps['morn'], (spread['morn']/2), diffs['morn'], humidity['morn'], temps['day'], (spread['day']/2), diffs['day'], humidity['day'], temps['eve'], (spread['eve']/2), diffs['eve'], humidity['eve'])
+    #logging.debug(dstr)
 
 
 # return a list of location id, name records
@@ -385,7 +393,6 @@ def getRangeAvgTemps(dbc, loc):
     return obsrange
 
 
-
 # create a view to deal with overnight observations that straddle dates
 # note that observations start at 10pm (due to crontab script downloading
 # at this time), so first date's overnight readings will be complete,
@@ -436,10 +443,10 @@ def addObservation(dbc, obs):
     logging.debug(dstr)
     location_id = int(obs['wmo'])
     # local_date_time_full is YYYYMMDDHHMMSS
-    obsdatetime=datetime.strptime(obs['local_date_time_full'],'%Y%m%d%H%M%S')
+    obsdatetime = datetime.strptime(obs['local_date_time_full'],'%Y%m%d%H%M%S')
     # convert to SQLite date and time compatible string formats
-    obs_date=obsdatetime.strftime('%Y-%m-%d')
-    obs_time=obsdatetime.strftime('%H:%M:%S')
+    obs_date = obsdatetime.strftime('%Y-%m-%d')
+    obs_time = obsdatetime.strftime('%H:%M:%S')
     air_temp = float(obs['air_temp'])
     apparent_temp = obs['apparent_t']
     if apparent_temp is None:
@@ -509,15 +516,13 @@ def main(argv):
     try:
         options, remainder = getopt.gnu_getopt(argv[1:],"hd")
     except getopt.GetoptError:
-        print(usagestr)
+        print(usagestr, file=sys.stderr)
         sys.exit(2)
 
     for opt, arg in options:
         if opt == '-h':
-            print(usagestr)
+            print(__doc__, file=sys.stderr) # print docstring at start of file
             sys.exit()
-        #elif opt == '-l':
-        #    debug = int(arg)
         elif opt == '-d':
             debug = 1
         else:
@@ -543,10 +548,9 @@ def main(argv):
     if debug:
         # create temporary filename in current working directory
         #pid = os.getpid() 
-        cwd=os.getcwd()
-        #with tempfile.NamedTemporaryFile(delete=True, dir=cwd, suffix='.sqlite') as tmpf:
+        cwd = os.getcwd()
         with tempfile.NamedTemporaryFile(delete=False, dir=cwd, suffix='.sqlite') as tmpf:
-            tempfname=tmpf.name
+            tempfname = tmpf.name
         dstr = "using temp file {} for database".format(tempfname)
         logging.info(dstr)
         conn = sqlite3.connect(tempfname) # temp db on file
@@ -559,6 +563,8 @@ def main(argv):
         conn.row_factory = sqlite3.Row
         dbc = conn.cursor()
         initDB(dbc)
+
+        # TODO: process rainfall readings, wind direction and speed
 
         # process the provided json files - extracting observations
         for fn in remainder:
@@ -581,23 +587,23 @@ def main(argv):
         printObsByDate(daily_obs_list)
 
         # display the date range for the following location summaries
-        obs_range=getObservationDateRange(dbc)
+        obs_range = getObservationDateRange(dbc)
         printObservationDatesSummary(obs_range)
 
         # calc typical temps, temp spread, cloudiness for each location
-        locations=getLocations(dbc) # list of location records
+        locations = getLocations(dbc) # list of location records
         for loc in locations:
-            typical_temps=calcTypicalTemps(dbc, loc['id'], 'AVG')
-            #min_temps=calcTypicalTemps(dbc, loc['id'], 'MIN')
-            #max_temps=calcTypicalTemps(dbc, loc['id'], 'MAX')
-            temp_range=getRangeAvgTemps(dbc, loc['name'])
-            typical_spread=calcTypicalTempSpread(dbc, loc['id'])
-            typical_tdiff=calcTypicalTempDiff(dbc, loc['name'])
-            typical_humidity=calcTypicalHumidity(dbc, loc['id'])
-            typical_cloud=calcCloudiness(dbc, loc['id'])
+            typical_temps = calcTypicalTemps(dbc, loc['id'], 'AVG')
+            #min_temps = calcTypicalTemps(dbc, loc['id'], 'MIN')
+            #max_temps = calcTypicalTemps(dbc, loc['id'], 'MAX')
+            temp_range = getRangeAvgTemps(dbc, loc['name'])
+            typical_spread = calcTypicalTempSpread(dbc, loc['id'])
+            typical_tdiff = calcTypicalTempDiff(dbc, loc['name'])
+            typical_humidity = calcTypicalHumidity(dbc, loc['id'])
+            typical_cloud = calcCloudiness(dbc, loc['id'])
             printLocationSummary(loc['name'], typical_temps, temp_range, typical_spread, typical_tdiff, typical_humidity, typical_cloud)
 
 
-if __name__ =="__main__":
+if __name__ == "__main__":
     sys.exit(main(sys.argv))
 
