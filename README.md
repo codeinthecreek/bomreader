@@ -76,7 +76,7 @@ if filename isn't supplied then standard input is assumed
 
 An example of usage:
 ```
-readweatherobs.sh -athr ~/workspace/bom/data/Townsville_MS-2018-03-01.json
+readweatherobs.sh -athr Townsville_MS-2018-03-01.json
 ```
 Provides output in reverse chronological order containing lines like:
 ```
@@ -87,5 +87,48 @@ Mount Stuart (Defence) 27/01:00pm : 31.5 feels like 36.8 humidity: 66 rain: 0.2
 Mount Stuart (Defence) 27/12:30pm : 31.5 feels like 37.1 humidity: 68 rain: 0.2
 Mount Stuart (Defence) 27/12:00pm : 30.4 feels like 34.6 humidity: 69 rain: 0.2
 ```
+
+#### Processing weather observations with bomreader.py
+
+`bomreader.py` is the main program for processing and presenting BoM weather observation data, stored in json files. It takes one or more json files, calculates and outputs the typical temperatures & range, relative humidity (& cloudiness) for each (and summarised for the entire date range) night, morning, day and evening over the time period contained in the provided data. This gives a more accurate reflection of weather & climate (for comparison), as opposed to just maximum and minimum temperatures.
+
+Note that the periods of the day are defined as
+* night: 10 PM - 6 AM
+* morning: 6 AM - 10 AM
+* daytime: 10 AM - 6 PM
+* evening: 6 PM - 10 PM
+such that the times of rapidly rising and falling temperatures (morning, evening) are separated from times of more stable temperatures (night, daytime), and time periods correspond roughly with perceptions of these times of day.
+
+The usage for `bomreader.py` is:
+```
+bomreader.py [-h] [-d] jsonfile1 [jsonfile 2 ...]
+```
+where the '-h' option provides a brief usage and help message, and '-d' is for debugging.
+
+Hence, `bomreader.py` can be run simply as, for example:
+```
+bomreader.py Townsville_MS-2018-03-01.json
+```
+Which provides the following output:
+```
+2018-02-27 overnight: Mount Stuart (Defence) 24.1 +/-0.2 (d=0.0) 100%
+2018-02-27 morning: Mount Stuart (Defence) 25.1 +/-2.4 (d=0.0) 94%
+2018-02-27 daytime: Mount Stuart (Defence) 27.4 +/-3.7 (d=0.0) 82%
+2018-02-27 evening: Mount Stuart (Defence) 25.7 +/-0.4 (d=0.0) 94%
+2018-02-28 overnight: Mount Stuart (Defence) 23.7 +/-0.9 (d=-0.4) 100%
+2018-02-28 morning: Mount Stuart (Defence) 23.5 +/-0.1 (d=-1.7) 100%
+2018-02-28 daytime: Mount Stuart (Defence) 24.4 +/-1.1 (d=-3.1) 98%
+2018-02-28 evening: Mount Stuart (Defence) 23.8 +/-0.4 (d=-1.9) 99%
+2018-03-01 overnight: Mount Stuart (Defence) 24.1 +/-0.4 (d=0.4) 100%
+2018-03-01 morning: Mount Stuart (Defence) 23.9 +/-0.3 (d=0.5) 100%
+2018-03-01 daytime: Mount Stuart (Defence) 25.4 +/-1.2 (d=1.0) 95%
+2018-03-01 evening: Mount Stuart (Defence) 25.5 +/-0.2 (d=1.7) 95%
+Observations cover 3 days, from 2018-02-26 to 2018-03-01
+Mount Stuart (Defence): overnight 23.9 +/-0.5 [range 23.7 - 24.1; interday +/-0.4] @ 100%
+Mount Stuart (Defence): morning 24.2 +/-0.9 [range 23.5 - 25.1; interday +/-1.1] @ 98%
+Mount Stuart (Defence): daytime 25.7 +/-2.0 [range 24.4 - 27.4; interday +/-2.1] @ 91%
+Mount Stuart (Defence): evening 25.0 +/-0.3 [range 23.8 - 25.7; interday +/-1.8] @ 96%
+```
+showing: date, period, location, temperature +/- range, inter-day difference, and relative humidity.
 
 
