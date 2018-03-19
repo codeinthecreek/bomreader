@@ -97,6 +97,7 @@ Note that the periods of the day are defined as
 * morning: 6 AM - 10 AM
 * daytime: 10 AM - 6 PM
 * evening: 6 PM - 10 PM
+
 such that the times of rapidly rising and falling temperatures (morning, evening) are separated from times of more stable temperatures (night, daytime), and time periods correspond roughly with perceptions of these times of day.
 
 The usage for `bomreader.py` is:
@@ -131,4 +132,10 @@ Mount Stuart (Defence): evening 25.0 +/-0.3 [range 23.8 - 25.7; interday +/-1.8]
 ```
 showing: date, period, location, temperature +/- range, inter-day difference, and relative humidity.
 
+
+## TODO
+
+Currently `bomreader.py` just processes temperature and relative humidity (apparent temperature is recorded but not yet processed, and cloud oktas, while processed is not output). In future, rainfall readings, wind direction and speed should also be recorded and processed.
+
+`getweatherobs.sh` needs a better way of obtaining product codes for stations (currently hard coded), and needs to be extended to other states and territories.
 
