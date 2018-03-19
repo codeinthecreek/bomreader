@@ -68,19 +68,11 @@ The usage, as given when no arguments are supplied is:
 ```
 Usage: readweatherobs.sh [field-options] [filename]
 Field options available: tahdwrcp
-<<<<<<< Updated upstream
-    t: air_temp; a: apparent_t; h: rel_hum; d: dewpt;
-    w: wind_dir wind_spd_kmh; r: rain_trace; c: cloud; p: press_msl
-if filename isn't supplied then standard input is assumed
-```
-The default options, if not otherwise specified, are 'ta'.
-=======
+The default options, if not otherwise specified, are `-ta`.
     -t: air_temp; -a: apparent_t; -h: rel_hum; -d: dewpt;
     -w: wind_dir wind_spd_kmh; -r: rain_trace; -c: cloud; -p: press_msl
 if filename isn't supplied then standard input is assumed
 ```
-The default options, if not otherwise specified, are `-ta`.
->>>>>>> Stashed changes
 
 An example of usage:
 ```
