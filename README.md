@@ -45,7 +45,7 @@ This is run without arguments, as:
 getallweatherobs.sh
 ```
 
-#### crontab.weather_dl.txt installation as a cronjob
+#### Automating observation data download with a cronjob using the crontab.weather_dl.txt template
 
 To add a cronjob that downloads the weather observations, as outlined above, edit the crontab with
 ```
@@ -56,6 +56,36 @@ Then copy the contents into the crontab, with your editor. Substitute `<PATH_TO>
 To verify that the cronjob has been installed correctly, issue the command
 ```
 crontab -l
+```
+
+### Processing Observations
+
+#### Reading the JSON observation data with readweatherobs.sh
+
+`readweatherobs.sh` provides basic functionality for reading the JSON-based observation data.
+
+The usage, as given when no arguments are supplied is:
+```
+Usage: readweatherobs.sh [field-options] [filename]
+Field options available: tahdwrcp
+    t: air_temp; a: apparent_t; h: rel_hum; d: dewpt;
+    w: wind_dir wind_spd_kmh; r: rain_trace; c: cloud; p: press_msl
+if filename isn't supplied then standard input is assumed
+```
+The default options, if not otherwise specified, are 'ta'.
+
+An example of usage:
+```
+readweatherobs.sh -athr ~/workspace/bom/data/Townsville_MS-2018-03-01.json
+```
+Provides output in reverse chronological order containing lines like:
+```
+Mount Stuart (Defence) 27/02:30pm : 24.1 feels like 27.6 humidity: 93 rain: 31.4
+Mount Stuart (Defence) 27/02:00pm : 24.6 feels like 25.3 humidity: 98 rain: 18.8
+Mount Stuart (Defence) 27/01:30pm : 29.5 feels like 33.6 humidity: 72 rain: 0.2
+Mount Stuart (Defence) 27/01:00pm : 31.5 feels like 36.8 humidity: 66 rain: 0.2
+Mount Stuart (Defence) 27/12:30pm : 31.5 feels like 37.1 humidity: 68 rain: 0.2
+Mount Stuart (Defence) 27/12:00pm : 30.4 feels like 34.6 humidity: 69 rain: 0.2
 ```
 
 
