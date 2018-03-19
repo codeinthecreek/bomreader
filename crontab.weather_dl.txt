@@ -1,4 +1,5 @@
 MAILTO=""
-PATH=/home/jl/bin:/home/jl/workspace/bom:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
+BOMDIR=$HOME/bom
+PATH=$BOMDIR:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
 # m  h  dom mon dow   command
-  15 22  */2 *  *     (cd $HOME/workspace/bom/; ./getallobs.sh; mv *.json ./data/)
+  15 22  */2 *  *     (cd $BOMDIR/; ./getallobs.sh; mv *.json ./data/)
