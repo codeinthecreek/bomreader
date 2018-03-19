@@ -1,5 +1,4 @@
 MAILTO=""
-BOMDIR=$HOME/bom
-PATH=$BOMDIR:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
+PATH=<PATH_TO>/bomreader:/usr/local/bin:/usr/bin:/bin
 # m  h  dom mon dow   command
-  15 22  */2 *  *     (cd $BOMDIR/; ./getallobs.sh; mv *.json ./data/)
+  15 22  */2 *  *     (cd $HOME/bomdata; getallobs.sh)
