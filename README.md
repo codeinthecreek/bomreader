@@ -1,7 +1,7 @@
 # bomreader
 BoM Reader is used to process JSON files of Australian weather observations obtained from the [Bureau of Meteorology](http://www.bom.gov.au) and present the results as typical conditions for times of day, for each day and overall, over the data's timespan.
 
-All code is currently only Linux terminal-based. The main program is written in Python 3 with an Sqlite3 backend. All other code is written in Bash Shell (GNU version >= 4). The code was tested under Arch Linux.
+All code is currently only Linux terminal-based. The main program is written in Python 3 with an Sqlite3 backend. All other code is written in Bash Shell (GNU version >= 4). `readweatherobs.sh` uses `jq`, a command line JSON processor, to do its work. All code was tested under Arch Linux.
 
 
 ## Files
@@ -68,11 +68,19 @@ The usage, as given when no arguments are supplied is:
 ```
 Usage: readweatherobs.sh [field-options] [filename]
 Field options available: tahdwrcp
+<<<<<<< Updated upstream
     t: air_temp; a: apparent_t; h: rel_hum; d: dewpt;
     w: wind_dir wind_spd_kmh; r: rain_trace; c: cloud; p: press_msl
 if filename isn't supplied then standard input is assumed
 ```
 The default options, if not otherwise specified, are 'ta'.
+=======
+    -t: air_temp; -a: apparent_t; -h: rel_hum; -d: dewpt;
+    -w: wind_dir wind_spd_kmh; -r: rain_trace; -c: cloud; -p: press_msl
+if filename isn't supplied then standard input is assumed
+```
+The default options, if not otherwise specified, are `-ta`.
+>>>>>>> Stashed changes
 
 An example of usage:
 ```
