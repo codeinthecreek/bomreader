@@ -136,7 +136,7 @@ def calcTypicalTempSpread(dbc, locid):
 # average humidity within daily intervals, across all samples for given loc
 # returns a dict of humidity, keys are night, morn, day, eve
 def calcTypicalHumidity(dbc, locid):
-    qry_strs = buildDailyIntervalQueries('AVG(relative_humidity)', locid)
+    qry_strs = buildDailyIntervalQueries('AVG(relative_humidity)', locid, 'AND relative_humidity >= 0')
     result = {}
     for qry in qry_strs:
         dbc.execute(qry_strs[qry])
@@ -450,9 +450,12 @@ def addObservation(dbc, obs):
     air_temp = float(obs['air_temp'])
     apparent_temp = obs['apparent_t']
     if apparent_temp is None:
-        apparent_temp = obs['air_temp'] # should be close enough
+        apparent_temp = obs['air_temp'] # close enough as not used in averages
     apparent_temp = float(apparent_temp )
-    relative_humidity = float(obs['rel_hum'])
+    relative_humidity = obs['rel_hum']
+    if relative_humidity is None:
+        relative_humidity = '-1' # will ignore in DB select
+    relative_humidity = float(relative_humidity)
     cloud_oktas = obs['cloud_oktas']
     if cloud_oktas is None:
         cloud_oktas = '-1' # will ignore in DB select
