@@ -102,9 +102,9 @@ such that the times of rapidly rising and falling temperatures (morning, evening
 
 The usage for `bomreader.py` is:
 ```
-bomreader.py [-h] [-d] jsonfile1 [jsonfile 2 ...]
+bomreader.py [-h] [-d] [-s] jsonfile1 [jsonfile 2 ...]
 ```
-where the '-h' option provides a brief usage and help message, and '-d' is for debugging.
+where the '-h' option provides a brief usage and help message, '-d' is for debugging, and '-s' provides the summary only.
 
 Hence, `bomreader.py` can be run simply as, for example:
 ```
