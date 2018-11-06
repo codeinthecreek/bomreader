@@ -5,7 +5,11 @@ bomreader.py: process and present BoM weather observation data as typical
     temperature & humidity for periods of day, for each location, day
     and summarised for entire date range.
 
-Usage: bomreader.py [-h] [-d] jsonfile1 [jsonfile 2 ...]
+Usage: bomreader.py [-h] [-d] [-s] jsonfile1 [jsonfile 2 ...]
+Parameters:
+    -h: Print this help
+    -d: Debugging output
+    -s: Print summary only
 
 Description:
     bomreader.py is used to process JSON files of weather observations
@@ -513,11 +517,12 @@ def initDB(dbc):
 def main(argv):
 
     debug = 0
-    paramstr = "[-h] [-d] jsonfile1 [jsonfile 2 ...]"
+    summary_only = False
+    paramstr = "[-h] [-d] [-s] jsonfile1 [jsonfile 2 ...]"
     usagestr = "Usage: {} {}".format(sys.argv[0], paramstr)
 
     try:
-        options, remainder = getopt.gnu_getopt(argv[1:],"hd")
+        options, remainder = getopt.gnu_getopt(argv[1:],"hds")
     except getopt.GetoptError:
         print(usagestr, file=sys.stderr)
         sys.exit(2)
@@ -528,6 +533,8 @@ def main(argv):
             sys.exit()
         elif opt == '-d':
             debug = 1
+        elif opt == '-s':
+            summary_only = True
         else:
             assert False, "unhandled option"
 
@@ -585,9 +592,11 @@ def main(argv):
         createDailyTODStats(dbc)
         # and diffs between consecutive days
         calcDayToDayTODAvgTempDiffs(dbc)
-        # get a day by day observation report for all locations
-        daily_obs_list = getDailyObservations(dbc)
-        printObsByDate(daily_obs_list)
+
+        if not summary_only:
+            # get a day by day observation report for all locations
+            daily_obs_list = getDailyObservations(dbc)
+            printObsByDate(daily_obs_list)
 
         # display the date range for the following location summaries
         obs_range = getObservationDateRange(dbc)
