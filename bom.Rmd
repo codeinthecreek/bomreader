@@ -1,18 +1,57 @@
 ---
-title: "Analysis of Bureau of Meteorology (Australia) Data"
+title: "Analysis of Data from The Australian Bureau of Meteorology (BoM)"
 author: codeinthecreek
+date: 2019
 output: html_document
 ---
 
+
 ```{r setup, include=FALSE}
+# this code chunk should be run prior to any of the following R code
 knitr::opts_chunk$set(echo = TRUE, eval = TRUE)
+```
+
+# Outline
+
+This document shows how to download, process and analyse data from the [Burea of Meterology](http://www.bom.gov.au), primarily in `R` using the [tidyverse](https://www.tidyverse.org/) library.
+
+
+## Dependencies
+
+### RStudio
+
+R Markdown is intended to be run within RStudio. RStudio desktop can be downloaded for free from https://www.rstudio.com/products/rstudio/download/#download
+
+
+### R Packages
+
+There are a few packages that need to be installed to run the R code within this document. These are primarily in or adjacent to the `tidyverse` set of [packages](https://www.tidyverse.org/packages/) and consist of the following:
+
+* The `tidyverse` set of packages;
+* The `jsonlite` package for `JSON` format data;
+* The `lubridate` package for data and time wrangling; and
+* The `knitr` package for report generation.
+
+Each of these can be installed with `install.packages("<name_of_package>")` at the `R` console, or via RStudio's `Tools` menu with `Install Packages`.
+
+In all of the following `R` code snippets, it is implied that the `tidyverse` library has been loaded. For clarity this is done here, rather than invisibly in the setup chunk, with:
+
+```{r, warning=FALSE, message=FALSE}
 library(tidyverse)
 ```
+
+Other libraries that are used in only a few code chunks, are explicitly loaded in those chunks for clarity.
+
+
+### Bash
+
+Optionally, to be able to run the `bash` code chunks and set up a `cron` job for automating downloads, the `Bash` shell is required. It is included with the operating system on computers running Linux and MacOS. On Windows 10, the [windows subsystem for linux](https://docs.microsoft.com/en-us/windows/wsl/install-win10) provides `Bash`, alternatively (and the only option in older versions of windows), [Git Bash](https://gitforwindows.org/) can be used.
 
 
 # Obtain Raw BoM JSON Data
 
 Before being able to do any analysis, the data needs to be obtained. The method used here is to obtain the "Latest Weather Observations" data for the locations of interest. This data only covers 72 hours, so it needs to be downloaded periodically to build up sufficient data for identifying trends over time, comparing readings between locations or seasons. The best way of doing this is via a `cron` job, which automates the download on a regular interval - every second day (allowing overlap to ensure no readings are missed) or third day (no overlap, and depending on timing, may miss a single reading if the reading is published late) is sufficient.
+
 
 ## Finding the URL of a location's observation data
 
@@ -109,9 +148,12 @@ The cronjob will then run at 10:10 pm (allowing 10 minutes leeway for the 10pm u
 
 As opposed to using `bash` and a `cron` job, the BoM `JSON` data can be downloaded directly with `R`, as follows.
 
-```{r, echo=FALSE, warning=FALSE}
-library(tidyverse)
 
+### Setup location tables
+
+The location code tables need to be set up prior to downloading data. These are used to generate the required download URL.
+
+```{r, warning=FALSE}
 loccodes <- tribble(
   ~location, ~state, ~lcode,
   "Brisbane_AP", "QLD", "94578",
@@ -145,13 +187,11 @@ loctable <- loccodes %>% inner_join(statecodes, by="state")
 ```
 
 
-### Download latest 72 hours of data from BoM for 1 or more locations
+### Download latest 72 hours of data from BoM for 1 or more locations {#multidl}
 
-Before running the following, specify the location(s) of interest in the `loc` list, and ensure the locations have an entry in the `loccodes` table (above). Note that `download_dir` should generally be the same location as 
+Before running the following, specify the location(s) of interest in the `loc` list, and ensure the locations have an entry in the `loccodes` table (above). Note that `download_dir` should be the same directory used later in section [Read all specified JSON files from a directory](#readdir).
+
 ```{r, eval=FALSE, warning=FALSE}
-library(tidyverse)
-library(purrr)
-
 loc <- c("Brisbane_AP", "Townsville_AP", "Cairns_RC", "Darwin_AP")
 
 download_dir="./tmp"
@@ -173,9 +213,9 @@ codes %>% select(url, destfile) %>% pmap(download.file)
 
 The following shows how to download a single observation data file from BoM. The result will be a downloaded `JSON` file, named by location and date, with the filename specified in the variable `fname`.
 
-```{r, eval=FALSE}
-library(tidyverse)
+*Note*: this is for illustrative purposes only, and should be used in conjunction with the later section [Process a single JSON file](#readsingle).
 
+```{r, eval=FALSE}
 loc <- "Townsville_MS"
 
 # get the codes for the selected location, return a dataframe
@@ -206,18 +246,17 @@ message("Done!\n")
 Once the BoM data has been obtained as one or more `JSON` files, it can then be read into `R` as a dataframe.
 
 
-## Read all specified JSON files from a directory
+## Read all specified JSON files from a directory {#readdir}
 
-The following code will process all the files matching the `filename_pattern` regex within the directory specified by `data_dir` (which should usually be the same location as `download_dir` specified for downloading above).
+The following code will process all the files matching the `filename_pattern` regex within the directory specified by `data_dir`, which should usually be the same location as `download_dir` specified in the code chunk in the earlier section [Download latest 72 hours of data from BoM for 1 or more locations](#multidl).
 
 ```{r, warning=FALSE, message=FALSE}
-library(tidyverse)
-library(purrr)
 library(jsonlite)
 
 #data_dir <- "./data"
 data_dir <- "./tmp"
 
+# some example filename patterns - modify to suit
 #filename_pattern <- "(Townsville_AP|Townsville_MS|Cairns|Cairns_RC|Cooktown|Bowen_AP|Mackay_AP|Rockhampton|Brisbane_AP|Darwin_AP)-2019-07-.*\\.json$"
 #filename_pattern <- "(Townsville_AP|Cairns_RC)-2019-.*\\.json$"
 #filename_pattern <- "Townsville_(MS|AP)-2019-07-.*\\.json$"
@@ -233,12 +272,13 @@ observation_data <- files %>%
 ```
 
 
-### Process a single JSON file
+### Process a single JSON file {#readsingle}
 
 The following shows how to read a single JSON file (with the filename specified in `fname`) that was downloaded from BoM in section [Single location download](#singledl), into a dataframe for analysis.
 
+*Note*: this is for illustrative purposes only.
+
 ```{r, eval=FALSE}
-library(tidyverse)
 library(jsonlite)
 
 cat("reading observation data as JSON from file: ", fname, "\n")
@@ -259,7 +299,6 @@ The string based date and time string contained in `local_date_time_full` needs 
 The simplest way to deal with date times is to ignore the timezone, as we only care about the local time.
 
 ```{r, eval=FALSE}
-library(tidyverse)
 library(lubridate)
 
 # convert time to a datetime
@@ -273,7 +312,6 @@ obs_data <- observation_data %>%
 Optionally, we can set the timezone to be that of the state the location is based in.
 
 ```{r, warning=FALSE, message=FALSE}
-library(tidyverse)
 library(lubridate)
 
 # complex case - various timezones
@@ -324,8 +362,6 @@ such that the times of rapidly rising and falling temperatures (morning, evening
 ## Extract location-based time of day temperature information
 
 ```{r, warning=FALSE, message=FALSE}
-library(tidyverse)
-
 # separate temperature data (air_temp) and drop rows with missing values
 # so that don't end up with NA's breaking stats, then
 # normalise dates for overnight observations (10pm-6am)
@@ -449,7 +485,7 @@ kable(typical_tod_temp_by_loc, digits=2)
 
 *TODO*
 
-```{r, eval=FALSE, echo=false}
+```{r, eval=FALSE, echo=FALSE}
 # select fields of interest
 obs <- obs_data %>%
   select(name, date_time, air_temp, apparent_t, rel_hum, rain_trace)
@@ -459,6 +495,9 @@ obs <- obs_data %>%
 
 
 # Graph extracted climate data per location
+
+Note that this is currently a work in progress.
+
 
 ## Graph daily temperature data
 
@@ -569,5 +608,5 @@ ggplot(monthly_obs_by_tod) +
 
 # Related Work
 
-[`bomrang` package](https://cran.r-project.org/web/packages/bomrang/)
+* [`bomrang` package](https://cran.r-project.org/web/packages/bomrang/)
 
