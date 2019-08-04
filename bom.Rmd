@@ -1,5 +1,6 @@
 ---
 title: "Analysis of Bureau of Meteorology (Australia) Data"
+author: codeinthecreek
 output: html_document
 ---
 
@@ -35,7 +36,7 @@ The following `Bash` shell code extract (taken from [getweatherobs.sh](https://g
 
 The following code should be modified to include the locations of interest in `locations`, with their states added to `locationstates` and codes specified in `locationcodes`. This should be saved as `download_location_data.sh` in a directory on the `$PATH` where it can be run no matter what the current working directory is. Here we'll use the user's `$HOME/bin` directory as per the `crontab` below.
 
-```{bash}
+```{bash, eval=FALSE}
 # space delimited list of locations
 locations="Townsville_AP Townsville_MS Darwin_AP"
 
@@ -108,7 +109,7 @@ The cronjob will then run at 10:10 pm (allowing 10 minutes leeway for the 10pm u
 
 As opposed to using `bash` and a `cron` job, the BoM `JSON` data can be downloaded directly with `R`, as follows.
 
-```{r}
+```{r, echo=FALSE, warning=FALSE}
 library(tidyverse)
 
 loccodes <- tribble(
@@ -147,7 +148,7 @@ loctable <- loccodes %>% inner_join(statecodes, by="state")
 ### Download latest 72 hours of data from BoM for 1 or more locations
 
 Before running the following, specify the location(s) of interest in the `loc` list, and ensure the locations have an entry in the `loccodes` table (above). Note that `download_dir` should generally be the same location as 
-```{r}
+```{r, eval=FALSE, warning=FALSE}
 library(tidyverse)
 library(purrr)
 
@@ -170,9 +171,9 @@ codes %>% select(url, destfile) %>% pmap(download.file)
 
 #### Single location download {#singledl}
 
-The following shows how to download a single observation data file from BoM.
+The following shows how to download a single observation data file from BoM. The result will be a downloaded `JSON` file, named by location and date, with the filename specified in the variable `fname`.
 
-```{r}
+```{r, eval=FALSE}
 library(tidyverse)
 
 loc <- "Townsville_MS"
@@ -209,7 +210,7 @@ Once the BoM data has been obtained as one or more `JSON` files, it can then be 
 
 The following code will process all the files matching the `filename_pattern` regex within the directory specified by `data_dir` (which should usually be the same location as `download_dir` specified for downloading above).
 
-```{r}
+```{r, warning=FALSE, message=FALSE}
 library(tidyverse)
 library(purrr)
 library(jsonlite)
@@ -234,9 +235,9 @@ observation_data <- files %>%
 
 ### Process a single JSON file
 
-The following shows how to read a single JSON file (with the filename `fname`) that was downloaded from BoM in section [Single location download](#singledl), into a dataframe for analysis.
+The following shows how to read a single JSON file (with the filename specified in `fname`) that was downloaded from BoM in section [Single location download](#singledl), into a dataframe for analysis.
 
-```{r}
+```{r, eval=FALSE}
 library(tidyverse)
 library(jsonlite)
 
@@ -257,7 +258,7 @@ The string based date and time string contained in `local_date_time_full` needs 
 
 The simplest way to deal with date times is to ignore the timezone, as we only care about the local time.
 
-```{r}
+```{r, eval=FALSE}
 library(tidyverse)
 library(lubridate)
 
@@ -271,7 +272,7 @@ obs_data <- observation_data %>%
 
 Optionally, we can set the timezone to be that of the state the location is based in.
 
-```{r}
+```{r, warning=FALSE, message=FALSE}
 library(tidyverse)
 library(lubridate)
 
@@ -322,7 +323,7 @@ such that the times of rapidly rising and falling temperatures (morning, evening
 
 ## Extract location-based time of day temperature information
 
-```{r}
+```{r, warning=FALSE, message=FALSE}
 library(tidyverse)
 
 # separate temperature data (air_temp) and drop rows with missing values
@@ -393,7 +394,9 @@ yearly_obs_by_tod <- temp_obs %>%
 
 ### Calculate min, max, average and spread of temps over all observations for each time of day
 
-```{r}
+```{r, warning=FALSE, message=FALSE}
+library(knitr)
+
 # for each location calculate average of TOD mean, max, min, spread (max-min)
 summary_all_obs_by_tod <- temp_obs %>%
   group_by(name, wtod) %>%
@@ -403,13 +406,16 @@ summary_all_obs_by_tod <- temp_obs %>%
             spreadt = max(air_temp) - min(air_temp)
             )
 
-View(summary_all_obs_by_tod)
+#View(summary_all_obs_by_tod)
+kable(summary_all_obs_by_tod, digits=2)
 ```
 
 
 ### Calculate min, max, mean and spread of typical TOD temps
 
-```{r}
+```{r, warning=FALSE, message=FALSE}
+library(knitr)
+
 # summarise and typical (average) temp by time of day
 summary_avt_by_tod <- daily_obs_by_tod %>%
   group_by(name, wtod) %>%
@@ -434,15 +440,16 @@ typical_tod_temp_by_loc <- summary_avt_by_tod %>%
     ) %>%
   arrange(meantemp)
 
-View(typical_tod_temp_by_loc)
+#head(typical_tod_temp_by_loc)
+kable(typical_tod_temp_by_loc, digits=2)
 ```
 
 
 ## Other climate statistics
 
-TODO
+*TODO*
 
-```{r}
+```{r, eval=FALSE, echo=false}
 # select fields of interest
 obs <- obs_data %>%
   select(name, date_time, air_temp, apparent_t, rel_hum, rain_trace)
@@ -541,7 +548,8 @@ ggplot(monthly_obs_by_tod) +
 
 ```{r}
 ggplot(monthly_obs_by_tod) +
-  geom_col(mapping=aes(x=wmonth, y=avt, fill=name), stat="identity", position=position_dodge()) +
+  #geom_bar(mapping=aes(x=wmonth, y=avt, fill=name), stat="identity", position=position_dodge()) + # equiv to geom_col w/out stat="identity"
+  geom_col(mapping=aes(x=wmonth, y=avt, fill=name), position=position_dodge()) +
   scale_x_discrete(name="wmonth", limits=1:12) +
   facet_wrap( ~ wtod, nrow=2)
 ```
@@ -557,7 +565,7 @@ ggplot(monthly_obs_by_tod) +
 * `purrr` [`map`](https://hookedondata.org/going-off-the-map/)
 * `purrr` [Lessons and Examples](https://jennybc.github.io/purrr-tutorial/index.html)
 * `ggplot2` [Essentials](http://www.sthda.com/english/wiki/ggplot2-essentials)
-
+* [R Markdown](https://ourcodingclub.github.io/2016/11/24/rmarkdown-1.html)
 
 # Related Work
 
