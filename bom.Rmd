@@ -1,0 +1,597 @@
+---
+title: "Analysis of Bureau of Meteorology (Australia) Data"
+output: html_document
+---
+
+# Obtain Raw BoM JSON Data
+
+Before being able to do any analysis, the data needs to be obtained. The method used here is to obtain the "Latest Weather Observations" data for the locations of interest. This data only covers 72 hours, so it needs to be downloaded periodically to build up sufficient data for identifying trends over time, comparing readings between locations or seasons. The best way of doing this is via a `cron` job, which automates the download on a regular interval - every second day (allowing overlap to ensure no readings are missed) or third day (no overlap, and depending on timing, may miss a single reading if the reading is published late) is sufficient.
+
+## Finding the URL of a location's observation data
+
+To download data for a location, the URL of the data is required. The URLs for the raw JSON data take the form
+```
+http://www.bom.gov.au/products/<state_code>/<state_code>.<location_code>.shtml
+```
+
+These codes can be found via the BoM [website](http://www.bom.gov.au) by going to the page containing the relevant state of Australia's latest observations (currently accessible from the front page via the near top right menu links per state, each with a dropdown from which`All observations` or `All <Name_of_State> observations` can be selected. This will take you to a page with a list of stations and their latest readings. For example [Latest Weather Observations for Queensland](http://www.bom.gov.au/qld/observations/qldall.shtml). Then clicking on the station name for the location of interest.
+
+For example, `Townsville` has the URL http://www.bom.gov.au/products/IDQ60801/IDQ60801.94294.shtml.
+
+The product code for the state is the first part of the filename (`IDQ60801` in the example), and the location code is the number after the period (`94294` in the example).
+
+
+## Download json data from BoM using Bash and a Cron job
+
+*Note*: for downloading BoM data within RStudio use the R version provided in the following section.
+
+The following `Bash` shell code extract (taken from [getweatherobs.sh](https://github.com/codeinthecreek/bomreader) with minor modifications to be a standalone script) shows how to download the location data (obtained as a `JSON` file) from the web into a file for processing. It utilises associative arrays to lookup the codes required to construct the location's URL.
+
+The following code should be modified to include the locations of interest in `locations`, with their states added to `locationstates` and codes specified in `locationcodes`. This should be saved as `download_location_data.sh` in a directory on the `$PATH` where it can be run no matter what the current working directory is. Here we'll use the user's `$HOME/bin` directory as per the `crontab` below.
+
+```{bash}
+# space delimited list of locations
+locations="Townsville_AP Townsville_MS Darwin_AP"
+
+declare -A locationstates
+locationstates=( \
+    ["Townsville_AP"]="QLD" \
+    ["Townsville_MS"]="QLD" \
+    ["Darwin_AP"]="NT" \
+)
+
+declare -A locationcodes
+locationcodes=( \
+    ["Townsville_AP"]="94294" \
+    ["Townsville_MS"]="94272" \
+    ["Darwin_AP"]="94120" \
+)
+
+declare -A statecodes
+statecodes=( \
+    ["QLD"]="IDQ60801/IDQ60801" \
+    ["NT"]="IDD60801/IDD60801" \
+    ["WA"]="IDW60801/IDD60801" \
+    ["SA"]="IDS60801/IDD60801" \
+    ["NSW"]="IDN60801/IDD60801" \
+    ["VIC"]="IDV60801/IDD60801" \
+    ["TAS"]="IDT60801/IDD60801"
+)
+
+for loc in $locations; do
+    state=${locationstates[$loc]}
+    scode=${statecodes[$state]}
+    lcode=${locationcodes[$loc]}
+
+    url="http://www.bom.gov.au/fwo/${scode}.${lcode}.json"
+    fname="${loc}-$(/bin/date +\%F).json"
+
+    echo >&2 "location $loc in state $state with state code $scode and location code $lcode"
+    echo >&2 "retrieving URL $url"
+    echo >&2 "writing to file $fname"
+
+    curl "$url" 2>/dev/null > $fname
+done
+
+echo >&2 "Done!"
+```
+
+
+Once this is done, a data directory for the downloads should be created. Here, we'll use `$HOME/bom_data`.
+
+To set up a `cron` job to download BoM data every 48 hours (ensuring full data coverage as BoM data covers 72 hours), enter the following at the command line to edit the crontab
+```bash
+crontab -e
+```
+
+Assuming an empty crontab, and the script and data directory given above, paste the following into the crontab, replacing `username` with your username. Note empty last line.
+```bash
+MAILTO=""
+PATH=/home/username/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
+#  min  hr  dom  mon  dow   command
+    10  22  */2   *    *    (cd $HOME/bom_data/; download_location_data.sh)
+
+```
+
+Save and exit the editor.
+
+The cronjob will then run at 10:10 pm (allowing 10 minutes leeway for the 10pm update) every odd day of the month (so with months having 31 days, it will be run on the last day of the month and then 24 hours later on the first day of the new month), downloading the `JSON` data for each of the specified locations.
+
+
+## Download data from BoM using R.
+
+As opposed to using `bash` and a `cron` job, the BoM `JSON` data can be downloaded directly with `R`, as follows.
+
+```{r}
+library(tidyverse)
+
+loccodes <- tribble(
+  ~location, ~state, ~lcode,
+  "Brisbane_AP", "QLD", "94578",
+  "Rockhampton", "QLD", "94374",
+  "Mackay_AP", "QLD", "95367",
+  "Proserpine", "QLD", "94365",
+  "Bowen_AP", "QLD", "94383",
+  "Townsville_AP", "QLD", "94294",
+  "Townsville_MS", "QLD", "94272",
+  "Innisfail_AP", "QLD", "94280",
+  "Cairns", "QLD", "94287",
+  "Cairns_RC", "QLD", "94288",
+  "Mareeba", "QLD", "95286",
+  "Cooktown", "QLD", "95283",
+  "Darwin_AP", "NT", "94120"
+)
+
+statecodes <- tribble(
+  ~state, ~scode,
+  "QLD", "IDQ60801/IDQ60801",
+  "NT", "IDD60801/IDD60801",
+  "WA", "IDW60801/IDD60801",
+  "SA", "IDS60801/IDD60801",
+  "NSW", "IDN60801/IDD60801",
+  "VIC", "IDV60801/IDD60801",
+  "TAS", "IDT60801/IDD60801"
+)
+
+# specify 'by' argument to prevent join() printing field it chooses to join on
+loctable <- loccodes %>% inner_join(statecodes, by="state")
+```
+
+
+### Download latest 72 hours of data from BoM
+
+Before running the following, specify the location(s) of interest in the `loc` list, and ensure the locations have an entry in the `loccodes` table (above). Note that `download_dir` should generally be the same location as 
+```{r}
+library(tidyverse)
+library(purrr)
+
+loc <- c("Brisbane_AP", "Townsville_AP", "Cairns_RC", "Darwin_AP")
+
+download_dir="./tmp"
+
+# get the codes for the selected locations
+codes <- loctable %>%
+  filter(location %in% loc) %>%
+  mutate(url = paste0("http://www.bom.gov.au/fwo/", scode, ".", lcode, ".json")) %>%
+  mutate(destfile = sprintf("%s/%s-%s.json", download_dir, location, Sys.Date()))
+
+# note in the following selected column order and names are important
+# (sprintf needs fmt first; download.file needs url and destfile)
+codes %>% mutate(fmt="downloading %s => %s") %>% select(fmt, url, destfile) %>% pmap(sprintf)
+codes %>% select(url, destfile) %>% pmap(download.file)
+```
+
+
+#### deprecated single location download - for reference only
+
+The following shows how to download a single observation data file from BoM.
+
+```{r}
+library(tidyverse)
+
+loc <- "Townsville_MS"
+
+# get the codes for the selected location, return a dataframe
+codes <- loctable %>% filter(location==loc)# %>%
+
+# extract code from the first cell (should only be 1) of each field
+# note that [] extracts a list, [[]] extracts an element within the list
+#lcode <- codes$lcode[[1]]
+#scode <- codes$scode[[1]]
+# the above code is deprecated - instead use pull() from lplyr package
+lcode <- codes %>% pull(lcode)
+scode <- codes %>% pull(scode)
+
+url <- paste0("http://www.bom.gov.au/fwo/", scode, ".", lcode, ".json")
+#cat("retrieving URL ", url, "\n", sep="") # sep="" to match message()
+message("retrieving URL ", url, "\n")
+
+fname <- sprintf("%s-%s.json", loc, Sys.Date())
+#cat("downloading to file ", fname, "\n", sep="") # to stdout
+message("downloading to file ", fname, "\n") # to stderr
+download.file(url, destfile=fname)
+message("Done!\n")
+```
+
+
+# Read BoM data from JSON file(s) to a dataframe and pre-process
+
+Once the BoM data has been obtained as one or more `JSON` files, it can then be read into `R` as a dataframe.
+
+
+## Read all specified JSON files from a directory
+
+The following code will process all the files matching the `filename_pattern` regex within the directory specified by `data_dir` (which should usually be the same location as `download_dir` specified for downloading above).
+
+```{r}
+library(tidyverse)
+library(purrr)
+library(jsonlite)
+
+#data_dir <- "./data"
+data_dir <- "./tmp"
+
+#filename_pattern <- "(Townsville_AP|Townsville_MS|Cairns|Cairns_RC|Cooktown|Bowen_AP|Mackay_AP|Rockhampton|Brisbane_AP|Darwin_AP)-2019-07-.*\\.json$"
+#filename_pattern <- "(Townsville_AP|Cairns_RC)-2019-.*\\.json$"
+#filename_pattern <- "Townsville_(MS|AP)-2019-07-.*\\.json$"
+#filename_pattern <- "Townsville_AP-2019-(01|02)-.*\\.json$"
+filename_pattern <- "*\\.json$"
+
+
+files <- list.files(data_dir, pattern =filename_pattern, full.name = TRUE)
+
+# read the observations:data contents of all specified JSON files into a dataframe
+observation_data <- files %>%
+       map_df(~fromJSON(.)$observations$data)
+
+```
+
+
+### Deprecated process a single JSON file - for reference only
+
+Once a JSON file has been downloaded from BoM (above), it can be accessed using the filename `fname`, to read it into a dataframe for analysis.
+
+```{r}
+library(tidyverse)
+library(jsonlite)
+
+cat("reading observation data as JSON from file: ", fname, "\n")
+rawj <- fromJSON(fname)
+# this will contain: observations -> notice[], header[], data[]
+# extract just the data as a dataframe
+observation_data <- rawj$observations$data
+```
+
+
+## Convert the string based date and time to datetime type
+
+The string based date and time string contained in `local_date_time_full` needs to be converted to a `datetime` object. As we are only concerned with the local time, and not comparing time across timezones, the timezone information can either be ignored (the simple way shown first), or utilised (more complex, as shown after). Only one of these two approaches needs to be run.
+
+
+### Ignore timezone
+
+The simplest way to deal with date times is to ignore the timezone, as we only care about the local time.
+
+```{r}
+library(tidyverse)
+library(lubridate)
+
+# convert time to a datetime
+obs_data <- observation_data %>%
+  mutate(date_time = ymd_hms(local_date_time_full))
+```
+
+
+### Specify timezone for each location
+
+Optionally, we can set the timezone to be that of the state the location is based in.
+
+```{r}
+library(tidyverse)
+library(lubridate)
+
+# complex case - various timezones
+# set timezone based on first 3 chars of history_product code:
+#   IDD = NT, IDQ = Qld, IDW = WA, IDS = SA, IDV = Vic, IDN = NSW, IDT = Tas
+
+prodtotimezone <- tribble(
+  ~pcode, ~timezone,
+  "IDD", "Australia/Darwin",
+  "IDQ", "Australia/Brisbane",
+  "IDW", "Australia/Perth",
+  "IDN", "Australia/Sydney",
+  "IDS", "Australia/Adelaide",
+  "IDV", "Australia/Melbourne",
+  "IDT", "Australia/Hobart"
+)
+
+# create the 3 char pcode field to join with the above table to get the timezone
+obs_data <- observation_data %>%
+  mutate(pcode = substr(history_product, 1, 3)) %>%
+  inner_join(prodtotimezone, by="pcode") %>%
+  select(-pcode) # no longer needed after the join
+
+# then set the time using the timezone information
+# the following seems to work - set datetime with default timezone,
+# then group by timezone and set the timezone
+obs_data <- obs_data %>%
+  mutate(date_time = ymd_hms(local_date_time_full)) %>%
+  group_by(timezone) %>%
+  mutate(date_time = with_tz(date_time, tzone=first(timezone))) %>%
+  ungroup()
+```
+
+
+#### Vectorized datetime with timezone approaches that don't work
+
+The following is for reference only, to show approaches that didn't work.
+
+*NOTE*: This code seems to set the time to the UTC time and then setting the timezone changes the time. This may be due to `ymd_hms()` not being vectorized for timezone, and even with work arounds the following is probably occuring:
+> the result has to be a string, otherwise unlist() or c() will turn the result back to the system timezone, which in this case is UTC.
+
+Ref: https://github.com/tidyverse/lubridate/issues/359, https://stackoverflow.com/questions/33848563/with-tz-with-a-vector-of-timezones/33848764#33848764
+
+```{r}
+# simple approach - doesn't work, converts local time to UTC
+# group by TZ column and ymd_hms with first tz argument.
+# ref: https://github.com/tidyverse/lubridate/issues/359
+# ref: https://stackoverflow.com/questions/46934574/tidyr-group-by-mutatefoo-fill
+t1 <- tz_obs_data %>%
+  group_by(timezone) %>%
+  mutate(date_time = ymd_hms(local_date_time_full, tz=first(timezone)))
+
+# try forcing timezone. It gives the wrong results.
+t2 <- tz_obs_data %>%
+  #mutate(date_time = ymd_hms(local_date_time_full, tz=first(timezone))) %>%
+  mutate(date_time_utc = ymd_hms(aifstime_utc, tz="UTC")) %>%
+  group_by(timezone) %>%
+  #mutate(date_time = force_tz(date_time, tzone=first(timezone))) # becomes UTC
+  mutate(date_time = force_tz(date_time_utc, tzone=first(timezone))) # offset from UTC is in wrong direction (-10 instead of +10 for example)
+
+# note the need to use the rowwise() function so that tz=timezone argument
+# gets a single value for each row. this doesn't work and is slow!
+# ref: [Vectorised time zone conversion with lubridate](https://stackoverflow.com/questions/48291932/vectorised-time-zone-conversion-with-lubridate)
+t3 <- tz_obs_data %>%
+  rowwise %>%
+  mutate(date_time = ymd_hms(local_date_time_full, tz=timezone))# %>%
+  #ungroup()
+```
+
+
+# Analyse BoM data for location-based time of day temperature information
+
+With the BoM data loaded and preprocessed it can now be analysed. In this section we'll analyse the temperature to provide typical temperatures for each time of day. night, morning, day and evening over the time period contained in the provided data. This gives a more accurate reflection of weather & climate (for comparison), as opposed to just maximum and minimum temperatures.
+
+The periods of the day are defined as
+
+* night: 10 PM - 6 AM
+* morning: 6 AM - 10 AM
+* daytime: 10 AM - 6 PM
+* evening: 6 PM - 10 PM
+
+such that the times of rapidly rising and falling temperatures (morning, evening) are separated from times of more stable temperatures (night, daytime), and time periods correspond roughly with perceptions of these times of day.
+
+
+## Extract location-based time of day temperature information
+
+```{r}
+library(tidyverse)
+
+# separate temperature data (air_temp) and drop rows with missing values
+# so that don't end up with NA's breaking stats, then
+# normalise dates for overnight observations (10pm-6am)
+# so that 10pm-11:59pm belong to the following day
+# and calculate time of day as follows
+# morning: 06:00 - 09:59
+# daytime: 10:00 - 17:59
+# evening: 18:00 - 21:59
+# overnight: 22:00 - 05:59
+
+temp_obs <- obs_data %>%
+  select(name, date_time, air_temp) %>%
+  drop_na() %>%
+  mutate(whr = hour(date_time)) %>%
+  mutate(wdate = if_else(whr >= 22,
+                         as_date(date_time + period(1, "day")),
+                         as_date(date_time))
+         ) %>%
+  mutate(wmonth = month(wdate)) %>%
+  mutate(wyear = year(wdate)) %>%
+  mutate(wtod = case_when(
+         whr >= 6 & whr < 10 ~ "1-morn",
+         whr >= 10 & whr < 18 ~ "2-day",
+         whr >= 18 & whr < 22 ~ "3-eve",
+         whr >= 22 | whr < 6 ~ "0-night"
+  ))
+
+# group observations by (location and) time of day for each day
+# and calculate for temp: mean, max, min, spread (max-min)
+daily_obs_by_tod <- temp_obs %>%
+  group_by(name, wdate, wtod) %>%
+  summarise(avt = mean(air_temp),
+            maxt = max(air_temp),
+            mint = min(air_temp),
+            spreadt = max(air_temp) - min(air_temp)
+            )
+
+# mean daily temp per location
+daily_mean_loc <- temp_obs %>%
+  group_by(name, wdate) %>%
+  summarise(meantemp = mean(air_temp))
+
+
+# Group time of day observations by month
+monthly_obs_by_tod <- temp_obs %>%
+  group_by(name, wmonth, wtod) %>%
+  summarise(avt = mean(air_temp),
+            maxt = max(air_temp),
+            mint = min(air_temp),
+            spreadt = max(air_temp) - min(air_temp)
+            )
+
+# Group time of day observations by year
+yearly_obs_by_tod <- temp_obs %>%
+  group_by(name, wyear, wtod) %>%
+  summarise(avt = mean(air_temp),
+            maxt = max(air_temp),
+            mint = min(air_temp),
+            spreadt = max(air_temp) - min(air_temp)
+            )
+
+```
+
+
+## Summarise time of day temperature data per location
+
+### Calculate min, max, average and spread of temps over all observations for each time of day
+
+```{r}
+# for each location calculate average of TOD mean, max, min, spread (max-min)
+summary_all_obs_by_tod <- temp_obs %>%
+  group_by(name, wtod) %>%
+  summarise(avt = mean(air_temp),
+            maxt = max(air_temp),
+            mint = min(air_temp),
+            spreadt = max(air_temp) - min(air_temp)
+            )
+
+View(summary_all_obs_by_tod)
+```
+
+
+### Calculate min, max, mean and spread of typical TOD temps
+
+```{r}
+# summarise and typical (average) temp by time of day
+summary_avt_by_tod <- daily_obs_by_tod %>%
+  group_by(name, wtod) %>%
+  summarise(mean_avt = mean(avt),
+            max_avt = max(avt),
+            min_avt = min(avt),
+            spread_avt = max(avt) - min(avt)
+            )
+
+# for each loc provide typical (average) temp for each time of day for viewing
+typical_tod_temp_by_loc <- summary_avt_by_tod %>%
+  select(name, wtod, mean_avt) %>%
+  spread(key = wtod, value = mean_avt) %>%
+  rename("night" = "0-night", "morn" = "1-morn", "day" = "2-day", "eve" = "3-eve") %>%
+  group_by(name) %>%
+  summarise(
+    morning = round(morn, digits=1),
+    daytime = round(day, digits=1),
+    evening = round(eve, digits=1),
+    overnight = round(night, digits=1),
+    meantemp = round(mean(morn, day, eve, night), digits=1)
+    ) %>%
+  arrange(meantemp)
+
+View(typical_tod_temp_by_loc)
+```
+
+
+## Other climate statistics
+
+TODO
+
+```{r}
+# select fields of interest
+obs <- obs_data %>%
+  select(name, date_time, air_temp, apparent_t, rel_hum, rain_trace)
+
+# TODO
+```
+
+
+# Graph extracted climate data per location
+
+## Graph daily temperature data
+
+### Graph daily mean temperature over date range
+
+```{r}
+ggplot(daily_mean_loc) +
+  geom_point(aes(x=wdate, y=meantemp, color=name, shape=name))
+```
+
+
+### Graph daily time of day average temperature over date range
+
+```{r}
+ggplot(daily_obs_by_tod) +
+  geom_point(aes(x=wdate, y=avt, color=name, shape=name)) +
+  facet_wrap( ~ wtod, nrow=2)
+```
+
+
+### Graph time of day temperature summary
+
+#### Boxplot locations per time of day
+
+```{r}
+ggplot(daily_obs_by_tod) +
+  geom_boxplot(mapping = aes(x=name, y=avt, color=name)) +
+  coord_flip() +
+  facet_wrap( ~ wtod, nrow=2)
+```
+
+
+#### Boxplot time of day per location
+
+```{r}
+ggplot(daily_obs_by_tod) +
+  geom_boxplot(mapping = aes(x=wtod, y=avt, color=name)) +
+  coord_flip() +
+  facet_wrap( ~ name, nrow=2)
+```
+
+
+#### Smooth graph of location temperature over date range, per time of day
+
+```{r}
+ggplot(temp_obs) +
+  geom_smooth(aes(x=wdate, y=air_temp, color=name)) +
+  facet_wrap( ~ wtod, nrow=2)
+```
+
+
+## Graph monthly temperature data
+
+### Compare location temperatures by time of day
+
+#### Plot typical location temperature over months, per time of day
+
+```{r}
+ggplot(monthly_obs_by_tod) +
+  geom_point(aes(x=wmonth, y=avt, color=name, shape=name)) +
+  scale_x_discrete(name="wmonth", limits=1:12) +
+  facet_wrap( ~ wtod, nrow=2)
+```
+
+
+#### Box plot typical location temperature per months and time of day
+
+```{r}
+ggplot(monthly_obs_by_tod) +
+  geom_boxplot(mapping = aes(x=name, y=avt, color=name)) +
+  coord_flip() +
+  facet_grid(wmonth ~ wtod)
+```
+
+
+### Compare monthly time of day temperatures per location as plot
+
+```{r}
+ggplot(monthly_obs_by_tod) +
+  geom_point(aes(x=wmonth, y=avt, color=wtod, shape=wtod)) +
+  scale_x_discrete(name="wmonth", limits=1:12) +
+  facet_wrap( ~ name, nrow=2)
+```
+
+
+### Compare monthly time of day average temperature for locations as a bar graph
+
+```{r}
+ggplot(monthly_obs_by_tod) +
+  geom_col(mapping=aes(x=wmonth, y=avt, fill=name), stat="identity", position=position_dodge()) +
+  scale_x_discrete(name="wmonth", limits=1:12) +
+  facet_wrap( ~ wtod, nrow=2)
+```
+
+
+# References
+
+* [R for Data Science](https://r4ds.had.co.nz)
+* [Manipulating data tables with dplyr](https://mgimond.github.io/ES218/Week03a.html)
+* [7 Most Practically Useful Operations When Wrangling with Text Data in R](https://blog.exploratory.io/7-most-practically-useful-operations-when-wrangling-with-text-data-in-r-7654bd9d1a0c)
+* [5 Most Practically Useful Operations When Working with Date and Time in R](https://blog.exploratory.io/5-most-practically-useful-operations-when-working-with-date-and-time-in-r-9f9eb8a17465)
+* [`lubridate` package](https://lubridate.tidyverse.org/)
+* `purrr` [`map`](https://hookedondata.org/going-off-the-map/)
+* `purrr` [Lessons and Examples](https://jennybc.github.io/purrr-tutorial/index.html)
+* `ggplot2` [Essentials](http://www.sthda.com/english/wiki/ggplot2-essentials)
+
+
+# Related Work
+
+[`bomrang` package](https://cran.r-project.org/web/packages/bomrang/)
+
