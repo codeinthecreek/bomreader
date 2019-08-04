@@ -3,6 +3,12 @@ title: "Analysis of Bureau of Meteorology (Australia) Data"
 output: html_document
 ---
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE)
+library(tidyverse)
+```
+
+
 # Obtain Raw BoM JSON Data
 
 Before being able to do any analysis, the data needs to be obtained. The method used here is to obtain the "Latest Weather Observations" data for the locations of interest. This data only covers 72 hours, so it needs to be downloaded periodically to build up sufficient data for identifying trends over time, comparing readings between locations or seasons. The best way of doing this is via a `cron` job, which automates the download on a regular interval - every second day (allowing overlap to ensure no readings are missed) or third day (no overlap, and depending on timing, may miss a single reading if the reading is published late) is sufficient.
@@ -138,7 +144,7 @@ loctable <- loccodes %>% inner_join(statecodes, by="state")
 ```
 
 
-### Download latest 72 hours of data from BoM
+### Download latest 72 hours of data from BoM for 1 or more locations
 
 Before running the following, specify the location(s) of interest in the `loc` list, and ensure the locations have an entry in the `loccodes` table (above). Note that `download_dir` should generally be the same location as 
 ```{r}
@@ -162,7 +168,7 @@ codes %>% select(url, destfile) %>% pmap(download.file)
 ```
 
 
-#### Single location download - for reference only {#single-dl-link}
+#### Single location download {#singledl}
 
 The following shows how to download a single observation data file from BoM.
 
@@ -226,9 +232,9 @@ observation_data <- files %>%
 ```
 
 
-### Process a single JSON file - for reference only
+### Process a single JSON file
 
-Once a single JSON file has been downloaded from BoM (see [Single location download](#single-dl-link)) it can be accessed using the filename `fname`, to read it into a dataframe for analysis.
+The following shows how to read a single JSON file (with the filename `fname`) that was downloaded from BoM in section [Single location download](#singledl), into a dataframe for analysis.
 
 ```{r}
 library(tidyverse)
