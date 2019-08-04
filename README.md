@@ -1,10 +1,16 @@
 # bomreader
 BoM Reader is used to process JSON files of Australian weather observations obtained from the [Bureau of Meteorology](http://www.bom.gov.au) and present the results as typical conditions for times of day, for each day and overall, over the data's timespan.
 
+## R Markdown
+
+`bom.Rmd` is a standalone [R Markdown](https://rmarkdown.rstudio.com/) document containing all the code and instructions required to download, process and analyse BoM data.
+
+The R Markdown document contains the equivalent of all the earlier terminal-based code (see following section), with the processing and analysis (including graphing) done in `R` using the [Tidyverse](https://www.tidyverse.org/).
+
+
+## Terminal-based Python, Sqlite and Bash Code
+
 All code is currently only Linux terminal-based. The main program is written in Python 3 with an Sqlite3 backend. All other code is written in Bash Shell (GNU version >= 4). `readweatherobs.sh` uses `jq`, a command line JSON processor, to do its work. All code was tested under Arch Linux.
-
-
-## Files
 
 ### Observation Data Processing
 * bomreader.py - The main program to be used for reading, processing and displaying BoM observations.
@@ -15,7 +21,7 @@ All code is currently only Linux terminal-based. The main program is written in 
 * getallobs.sh - Download observations for all sites of interest. Used in crontab.
 * crontab.weather_dl.txt - Example crontab for downloading observation data every odd day of month.
 
-## Usage
+### Usage
 
 Note that your `$PATH` environment variable should be updated to point to the installed location of the following scripts and python code, otherwise to run these they will need to be prefixed with `./` if running from the installed location, or the path. The examples given below assume that the PATH has been set.
 
@@ -133,7 +139,7 @@ Mount Stuart (Defence): evening 25.0 +/-0.3 [range 23.8 - 25.7; interday +/-1.8]
 showing: date, period, location, temperature +/- range, inter-day difference, and relative humidity.
 
 
-## TODO
+### TODO
 
 Currently `bomreader.py` just processes temperature and relative humidity (apparent temperature is recorded but not yet processed, and cloud oktas, while processed is not output). In future, rainfall readings, wind direction and speed should also be recorded and processed.
 
