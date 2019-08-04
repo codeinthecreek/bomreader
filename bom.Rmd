@@ -162,7 +162,7 @@ codes %>% select(url, destfile) %>% pmap(download.file)
 ```
 
 
-#### deprecated single location download - for reference only
+#### Single location download - for reference only {#single-dl-link}
 
 The following shows how to download a single observation data file from BoM.
 
@@ -217,7 +217,6 @@ data_dir <- "./tmp"
 #filename_pattern <- "Townsville_AP-2019-(01|02)-.*\\.json$"
 filename_pattern <- "*\\.json$"
 
-
 files <- list.files(data_dir, pattern =filename_pattern, full.name = TRUE)
 
 # read the observations:data contents of all specified JSON files into a dataframe
@@ -227,9 +226,9 @@ observation_data <- files %>%
 ```
 
 
-### Deprecated process a single JSON file - for reference only
+### Process a single JSON file - for reference only
 
-Once a JSON file has been downloaded from BoM (above), it can be accessed using the filename `fname`, to read it into a dataframe for analysis.
+Once a single JSON file has been downloaded from BoM (see [Single location download](#single-dl-link)) it can be accessed using the filename `fname`, to read it into a dataframe for analysis.
 
 ```{r}
 library(tidyverse)
@@ -300,43 +299,6 @@ obs_data <- obs_data %>%
   mutate(date_time = with_tz(date_time, tzone=first(timezone))) %>%
   ungroup()
 ```
-
-
-#### Vectorized datetime with timezone approaches that don't work
-
-The following is for reference only, to show approaches that didn't work.
-
-*NOTE*: This code seems to set the time to the UTC time and then setting the timezone changes the time. This may be due to `ymd_hms()` not being vectorized for timezone, and even with work arounds the following is probably occuring:
-> the result has to be a string, otherwise unlist() or c() will turn the result back to the system timezone, which in this case is UTC.
-
-Ref: https://github.com/tidyverse/lubridate/issues/359, https://stackoverflow.com/questions/33848563/with-tz-with-a-vector-of-timezones/33848764#33848764
-
-```{r}
-# simple approach - doesn't work, converts local time to UTC
-# group by TZ column and ymd_hms with first tz argument.
-# ref: https://github.com/tidyverse/lubridate/issues/359
-# ref: https://stackoverflow.com/questions/46934574/tidyr-group-by-mutatefoo-fill
-t1 <- tz_obs_data %>%
-  group_by(timezone) %>%
-  mutate(date_time = ymd_hms(local_date_time_full, tz=first(timezone)))
-
-# try forcing timezone. It gives the wrong results.
-t2 <- tz_obs_data %>%
-  #mutate(date_time = ymd_hms(local_date_time_full, tz=first(timezone))) %>%
-  mutate(date_time_utc = ymd_hms(aifstime_utc, tz="UTC")) %>%
-  group_by(timezone) %>%
-  #mutate(date_time = force_tz(date_time, tzone=first(timezone))) # becomes UTC
-  mutate(date_time = force_tz(date_time_utc, tzone=first(timezone))) # offset from UTC is in wrong direction (-10 instead of +10 for example)
-
-# note the need to use the rowwise() function so that tz=timezone argument
-# gets a single value for each row. this doesn't work and is slow!
-# ref: [Vectorised time zone conversion with lubridate](https://stackoverflow.com/questions/48291932/vectorised-time-zone-conversion-with-lubridate)
-t3 <- tz_obs_data %>%
-  rowwise %>%
-  mutate(date_time = ymd_hms(local_date_time_full, tz=timezone))# %>%
-  #ungroup()
-```
-
 
 # Analyse BoM data for location-based time of day temperature information
 
