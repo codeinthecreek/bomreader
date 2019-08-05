@@ -266,8 +266,11 @@ filename_pattern <- "*\\.json$"
 files <- list.files(data_dir, pattern =filename_pattern, full.name = TRUE)
 
 # read the observations:data contents of all specified JSON files into a dataframe
+# and remove duplicates due to overlapping observation data
 observation_data <- files %>%
-       map_df(~fromJSON(.)$observations$data)
+       map_df(~fromJSON(.)$observations$data) %>%
+       distinct()
+
 
 ```
 
@@ -345,9 +348,56 @@ obs_data <- obs_data %>%
   ungroup()
 ```
 
-# Analyse BoM data for location-based time of day temperature information
 
-With the BoM data loaded and preprocessed it can now be analysed. In this section we'll analyse the temperature to provide typical temperatures for each time of day. night, morning, day and evening over the time period contained in the provided data. This gives a more accurate reflection of weather & climate (for comparison), as opposed to just maximum and minimum temperatures.
+# Analyse Bom data for location-based temperature information
+
+With the BoM data loaded and preprocessed it can now be analysed.
+
+## Find mean temperature for location over period covered by data
+
+```{r}
+# mean daily temp per location
+daily_mean_loc <- temp_obs %>%
+  group_by(name, wdate) %>%
+  summarise(meantemp = mean(air_temp))
+```
+
+
+## Find hottest and coldest times of day
+
+```{r}
+# find hottest time of day, and it's avg temp, per location
+# note that time intervals are half hourly, so don't need to bin times
+# TODO there should be a simpler way of doing this
+hottest_time_loc <- temp_obs %>% 
+  select(name, wtime, wdate, air_temp) %>% # relevant fields only
+  group_by(name, wdate) %>% # for each location and day
+  filter(air_temp==max(air_temp)) %>% # keep maximum temp entry
+  group_by(name, wtime) %>% # group by time and then count days
+  summarise(avg_max=mean(air_temp), freq=n()) %>% # it was max, and avg
+  group_by(name) %>% # then per location
+  top_n(1, freq) %>%  # only keep the time with the highest count 
+  group_by(name, freq) %>% # if many times have highest count
+  filter(avg_max==max(avg_max)) # break ties with higher temp
+
+# summarise(hottest_hr=whr[which.max(n)], freq_of_max=max(n), avg_max=mean(air_temp))
+
+coldest_time_loc <- temp_obs %>% 
+  select(name, wtime, wdate, air_temp) %>%
+  group_by(name, wdate) %>%
+  filter(air_temp==min(air_temp)) %>%
+  group_by(name, wtime) %>%
+  summarise(avg_min=mean(air_temp), freq=n()) %>%
+  group_by(name) %>%
+  top_n(1, freq) %>%
+  group_by(name, freq) %>%
+  filter(avg_min==min(avg_min))
+```
+
+
+## Analyse BoM data for location-based time of day temperature information
+
+In this section we'll analyse the temperature to provide typical temperatures for each time of day. night, morning, day and evening over the time period contained in the provided data. This gives a more accurate reflection of weather & climate (for comparison), as opposed to just maximum and minimum temperatures.
 
 The periods of the day are defined as
 
@@ -359,7 +409,7 @@ The periods of the day are defined as
 such that the times of rapidly rising and falling temperatures (morning, evening) are separated from times of more stable temperatures (night, daytime), and time periods correspond roughly with perceptions of these times of day.
 
 
-## Extract location-based time of day temperature information
+### Extract location-based time of day temperature information
 
 ```{r, warning=FALSE, message=FALSE}
 # separate temperature data (air_temp) and drop rows with missing values
@@ -387,7 +437,8 @@ temp_obs <- obs_data %>%
          whr >= 10 & whr < 18 ~ "2-day",
          whr >= 18 & whr < 22 ~ "3-eve",
          whr >= 22 | whr < 6 ~ "0-night"
-  ))
+  )) %>%
+  mutate(wtime = sprintf("%02d:%02d", hour(date_time), minute(date_time)))
 
 # group observations by (location and) time of day for each day
 # and calculate for temp: mean, max, min, spread (max-min)
@@ -398,12 +449,6 @@ daily_obs_by_tod <- temp_obs %>%
             mint = min(air_temp),
             spreadt = max(air_temp) - min(air_temp)
             )
-
-# mean daily temp per location
-daily_mean_loc <- temp_obs %>%
-  group_by(name, wdate) %>%
-  summarise(meantemp = mean(air_temp))
-
 
 # Group time of day observations by month
 monthly_obs_by_tod <- temp_obs %>%
@@ -425,8 +470,6 @@ yearly_obs_by_tod <- temp_obs %>%
 
 ```
 
-
-## Summarise time of day temperature data per location
 
 ### Calculate min, max, average and spread of temps over all observations for each time of day
 
