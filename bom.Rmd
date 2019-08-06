@@ -378,6 +378,13 @@ daily_mean_loc <- temp_obs %>%
   summarise(meantemp = mean(air_temp))
 ```
 
+### Graph daily mean temperature over date range
+
+```{r}
+ggplot(daily_mean_loc) +
+  geom_point(aes(x=wymd, y=meantemp, color=name, shape=name))
+```
+
 
 ## Find hottest and coldest times of day
 
@@ -414,6 +421,27 @@ coldest_time_loc <- coldest_times_loc %>%
   group_by(name, freq) %>% # OPTIONAL tie break on lowest min
   filter(avg_min==min(avg_min))
 ```
+
+
+### Show the (usually) hottest time of day per location
+
+```{r, warning=FALSE, message=FALSE}
+library(knitr)
+kable(hottest_time_loc, digits=2)
+```
+
+
+### Show the (usually) coldest time of day per location
+
+```{r, warning=FALSE, message=FALSE}
+library(knitr)
+kable(coldest_time_loc, digits=2)
+```
+
+
+### Graph hottest and coldest times of day
+
+*TODO*
 
 
 ## Analyse BoM data for location-based time of day temperature information
@@ -457,6 +485,15 @@ tod_temp_obs <- temp_obs %>%
 ```
 
 
+#### Smooth graph of location temperature over date range, per time of day
+
+```{r}
+ggplot(tod_temp_obs) +
+  geom_smooth(aes(x=wdate, y=air_temp, color=name)) +
+  facet_wrap( ~ wtod, nrow=2)
+```
+
+
 ### Extract location-based time of day temperature information
 
 ```{r}
@@ -469,25 +506,35 @@ daily_obs_by_tod <- tod_temp_obs %>%
             mint = min(air_temp),
             spreadt = max(air_temp) - min(air_temp)
             )
+```
 
-# Group time of day observations by month
-monthly_obs_by_tod <- tod_temp_obs %>%
-  group_by(name, wmonth, wtod) %>%
-  summarise(avt = mean(air_temp),
-            maxt = max(air_temp),
-            mint = min(air_temp),
-            spreadt = max(air_temp) - min(air_temp)
-            )
 
-# Group time of day observations by year
-yearly_obs_by_tod <- tod_temp_obs %>%
-  group_by(name, wyear, wtod) %>%
-  summarise(avt = mean(air_temp),
-            maxt = max(air_temp),
-            mint = min(air_temp),
-            spreadt = max(air_temp) - min(air_temp)
-            )
+#### Graph daily time of day average temperature over date range
 
+```{r}
+ggplot(daily_obs_by_tod) +
+  geom_point(aes(x=wdate, y=avt, color=name, shape=name)) +
+  facet_wrap( ~ wtod, nrow=2)
+```
+
+
+#### Boxplot locations per time of day
+
+```{r}
+ggplot(daily_obs_by_tod) +
+  geom_boxplot(mapping = aes(x=name, y=avt, color=name)) +
+  coord_flip() +
+  facet_wrap( ~ wtod, nrow=2)
+```
+
+
+#### Boxplot time of day per location
+
+```{r}
+ggplot(daily_obs_by_tod) +
+  geom_boxplot(mapping = aes(x=wtod, y=avt, color=name)) +
+  coord_flip() +
+  facet_wrap( ~ name, nrow=2)
 ```
 
 
@@ -544,77 +591,21 @@ kable(typical_tod_temp_by_loc, digits=2)
 ```
 
 
-## Other climate statistics
+### Compare monthly temperature data
 
-*TODO*
-
-```{r, eval=FALSE, echo=FALSE}
-# select fields of interest
-obs <- obs_data %>%
-  select(name, date_time, air_temp, apparent_t, rel_hum, rain_trace)
-
-# TODO
-```
-
-
-# Graph extracted climate data per location
-
-Note that this is currently a work in progress.
-
-
-## Graph daily temperature data
-
-### Graph daily mean temperature over date range
+*Note* This is a work in progress.
 
 ```{r}
-ggplot(daily_mean_loc) +
-  geom_point(aes(x=wdate, y=meantemp, color=name, shape=name))
+# Group time of day observations by month
+monthly_obs_by_tod <- tod_temp_obs %>%
+  group_by(name, wmonth, wtod) %>%
+  summarise(avt = mean(air_temp),
+            maxt = max(air_temp),
+            mint = min(air_temp),
+            spreadt = max(air_temp) - min(air_temp)
+            )
 ```
 
-
-### Graph daily time of day average temperature over date range
-
-```{r}
-ggplot(daily_obs_by_tod) +
-  geom_point(aes(x=wdate, y=avt, color=name, shape=name)) +
-  facet_wrap( ~ wtod, nrow=2)
-```
-
-
-### Graph time of day temperature summary
-
-#### Boxplot locations per time of day
-
-```{r}
-ggplot(daily_obs_by_tod) +
-  geom_boxplot(mapping = aes(x=name, y=avt, color=name)) +
-  coord_flip() +
-  facet_wrap( ~ wtod, nrow=2)
-```
-
-
-#### Boxplot time of day per location
-
-```{r}
-ggplot(daily_obs_by_tod) +
-  geom_boxplot(mapping = aes(x=wtod, y=avt, color=name)) +
-  coord_flip() +
-  facet_wrap( ~ name, nrow=2)
-```
-
-
-#### Smooth graph of location temperature over date range, per time of day
-
-```{r}
-ggplot(tod_temp_obs) +
-  geom_smooth(aes(x=wdate, y=air_temp, color=name)) +
-  facet_wrap( ~ wtod, nrow=2)
-```
-
-
-## Graph monthly temperature data
-
-### Compare location temperatures by time of day
 
 #### Plot typical location temperature over months, per time of day
 
@@ -636,7 +627,7 @@ ggplot(monthly_obs_by_tod) +
 ```
 
 
-### Compare monthly time of day temperatures per location as plot
+#### Compare monthly time of day temperatures per location as plot
 
 ```{r}
 ggplot(monthly_obs_by_tod) +
@@ -646,7 +637,7 @@ ggplot(monthly_obs_by_tod) +
 ```
 
 
-### Compare monthly time of day average temperature for locations as a bar graph
+#### Compare monthly time of day average temperature for locations as a bar graph
 
 ```{r}
 ggplot(monthly_obs_by_tod) +
@@ -654,6 +645,34 @@ ggplot(monthly_obs_by_tod) +
   geom_col(mapping=aes(x=wmonth, y=avt, fill=name), position=position_dodge()) +
   scale_x_discrete(name="wmonth", limits=1:12) +
   facet_wrap( ~ wtod, nrow=2)
+```
+
+### Compare yearly temperature data
+
+*TODO*
+
+```{r, eval=FALSE, echo=FALSE}
+# Group time of day observations by year
+yearly_obs_by_tod <- tod_temp_obs %>%
+  group_by(name, wyear, wtod) %>%
+  summarise(avt = mean(air_temp),
+            maxt = max(air_temp),
+            mint = min(air_temp),
+            spreadt = max(air_temp) - min(air_temp)
+            )
+```
+
+
+## Other climate statistics
+
+*TODO*
+
+```{r, eval=FALSE, echo=FALSE}
+# select fields of interest
+obs <- obs_data %>%
+  select(name, date_time, air_temp, apparent_t, rel_hum, rain_trace)
+
+# TODO
 ```
 
 
