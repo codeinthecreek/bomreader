@@ -368,30 +368,29 @@ daily_mean_loc <- temp_obs %>%
 ```{r}
 # find hottest time of day, and it's avg temp, per location
 # note that time intervals are half hourly, so don't need to bin times
-# TODO there should be a simpler way of doing this
-hottest_time_loc <- temp_obs %>% 
+
+# TODO is there a simpler way of doing this
+hottest_time_loc <- temp_obs %>%
   select(name, wtime, wdate, air_temp) %>% # relevant fields only
   group_by(name, wdate) %>% # for each location and day
-  filter(air_temp==max(air_temp)) %>% # keep maximum temp entry
-  group_by(name, wtime) %>% # group by time and then count days
-  summarise(avg_max=mean(air_temp), freq=n()) %>% # it was max, and avg
+  summarise(max_temp = max(air_temp), hottest_time = wtime[which.max(air_temp)]) %>% # get hottest time and temp
+  group_by(name, hottest_time) %>% # group by hottest time to get
+  summarise(avg_max=mean(max_temp), freq=n()) %>% # count of how often it is hottest time and average max at that time 
   group_by(name) %>% # then per location
-  top_n(1, freq) %>%  # only keep the time with the highest count 
-  group_by(name, freq) %>% # if many times have highest count
-  filter(avg_max==max(avg_max)) # break ties with higher temp
-
-# summarise(hottest_hr=whr[which.max(n)], freq_of_max=max(n), avg_max=mean(air_temp))
+  top_n(1, freq)# %>% # keep time occuring most often
+  #group_by(name, freq) %>% # OPTIONAL tie break
+  #filter(avg_max==max(avg_max)) # taking the hottest of these times
 
 coldest_time_loc <- temp_obs %>% 
   select(name, wtime, wdate, air_temp) %>%
   group_by(name, wdate) %>%
-  filter(air_temp==min(air_temp)) %>%
-  group_by(name, wtime) %>%
-  summarise(avg_min=mean(air_temp), freq=n()) %>%
+  summarise(min_temp = min(air_temp), coldest_time = wtime[which.min(air_temp)]) %>%
+  group_by(name, coldest_time) %>%
+  summarise(avg_min=mean(min_temp), freq=n()) %>%
   group_by(name) %>%
-  top_n(1, freq) %>%
-  group_by(name, freq) %>%
-  filter(avg_min==min(avg_min))
+  top_n(1, freq)# %>% 
+  #group_by(name, freq) %>% # OPTIONAL tie break on lowest min
+  #filter(avg_min==min(avg_min))
 ```
 
 
