@@ -582,7 +582,7 @@ typical_tod_temp_by_loc <- summary_avt_by_tod %>%
     daytime = round(day, digits=1),
     evening = round(eve, digits=1),
     overnight = round(night, digits=1),
-    meantemp = round(mean(sum(morn, day, eve, night)/4), digits=1)
+    meantemp = round(mean(c(morn, day, eve, night)), digits=1)
     ) %>%
   arrange(meantemp)
 
