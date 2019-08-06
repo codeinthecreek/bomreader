@@ -351,14 +351,30 @@ obs_data <- obs_data %>%
 
 # Analyse Bom data for location-based temperature information
 
-With the BoM data loaded and preprocessed it can now be analysed.
+With the BoM data loaded and datetime preprocessed it can now be analysed.
+
+## Extract relevant information
+
+The first step is to extract only the relevant information for temperature-based queries, and provide "working" dates and times for ease of use in the following sections.
+
+```{r}
+# separate temperature data (air_temp) and drop rows with missing values
+# so that don't end up with NA's breaking stats, then
+temp_obs <- obs_data %>%
+  select(name, date_time, air_temp, apparent_t, rel_hum, wind_dir, wind_spd_kmh) %>%
+  drop_na() %>%
+  mutate(whr = hour(date_time)) %>%
+  mutate(wymd = as_date(date_time)) %>%
+  mutate(wtime = sprintf("%02d:%02d", hour(date_time), minute(date_time)))
+```
+
 
 ## Find mean temperature for location over period covered by data
 
 ```{r}
 # mean daily temp per location
 daily_mean_loc <- temp_obs %>%
-  group_by(name, wdate) %>%
+  group_by(name, wymd) %>%
   summarise(meantemp = mean(air_temp))
 ```
 
@@ -369,10 +385,12 @@ daily_mean_loc <- temp_obs %>%
 # find hottest time of day, and it's avg temp, per location
 # note that time intervals are half hourly, so don't need to bin times
 
+# TODO: add wind_dir to test what most common wind_dir is during
+# hottest and coldest times
+
 # first get hottest times and their frequency - for graphing
 hottest_times_loc <- temp_obs %>%
-  select(name, wtime, wdate, air_temp) %>% # relevant fields only
-  group_by(name, wdate) %>% # for each location and day
+  group_by(name, wymd) %>% # for each location and day
   summarise(max_temp = max(air_temp), hottest_time = wtime[which.max(air_temp)]) %>% # get hottest time and temp
   group_by(name, hottest_time) %>% # group by hottest time to get
   summarise(avg_max=mean(max_temp), freq=n()) # count of how often it is hottest time and average max at that time
@@ -385,8 +403,7 @@ hottest_time_loc <- hottest_times_loc %>%
   filter(avg_max==max(avg_max)) # the hottest of these times
 
 coldest_times_loc <- temp_obs %>% 
-  select(name, wtime, wdate, air_temp) %>%
-  group_by(name, wdate) %>%
+  group_by(name, wymd) %>%
   summarise(min_temp = min(air_temp), coldest_time = wtime[which.min(air_temp)]) %>%
   group_by(name, coldest_time) %>%
   summarise(avg_min=mean(min_temp), freq=n())
@@ -413,11 +430,9 @@ The periods of the day are defined as
 such that the times of rapidly rising and falling temperatures (morning, evening) are separated from times of more stable temperatures (night, daytime), and time periods correspond roughly with perceptions of these times of day.
 
 
-### Extract location-based time of day temperature information
+### Normalise dates and set time of day
 
-```{r, warning=FALSE, message=FALSE}
-# separate temperature data (air_temp) and drop rows with missing values
-# so that don't end up with NA's breaking stats, then
+```{r}
 # normalise dates for overnight observations (10pm-6am)
 # so that 10pm-11:59pm belong to the following day
 # and calculate time of day as follows
@@ -426,27 +441,28 @@ such that the times of rapidly rising and falling temperatures (morning, evening
 # evening: 18:00 - 21:59
 # overnight: 22:00 - 05:59
 
-temp_obs <- obs_data %>%
-  select(name, date_time, air_temp) %>%
-  drop_na() %>%
-  mutate(whr = hour(date_time)) %>%
-  mutate(wdate = if_else(whr >= 22,
-                         as_date(date_time + period(1, "day")),
-                         as_date(date_time))
-         ) %>%
-  mutate(wmonth = month(wdate)) %>%
-  mutate(wyear = year(wdate)) %>%
+tod_temp_obs <- temp_obs %>%
   mutate(wtod = case_when(
          whr >= 6 & whr < 10 ~ "1-morn",
          whr >= 10 & whr < 18 ~ "2-day",
          whr >= 18 & whr < 22 ~ "3-eve",
          whr >= 22 | whr < 6 ~ "0-night"
   )) %>%
-  mutate(wtime = sprintf("%02d:%02d", hour(date_time), minute(date_time)))
+  mutate(wdate = if_else(whr >= 22,
+                         as_date(date_time + period(1, "day")),
+                         as_date(date_time))
+         ) %>%
+  mutate(wmonth = month(wdate)) %>%
+  mutate(wyear = year(wdate))
+```
 
+
+### Extract location-based time of day temperature information
+
+```{r}
 # group observations by (location and) time of day for each day
 # and calculate for temp: mean, max, min, spread (max-min)
-daily_obs_by_tod <- temp_obs %>%
+daily_obs_by_tod <- tod_temp_obs %>%
   group_by(name, wdate, wtod) %>%
   summarise(avt = mean(air_temp),
             maxt = max(air_temp),
@@ -455,7 +471,7 @@ daily_obs_by_tod <- temp_obs %>%
             )
 
 # Group time of day observations by month
-monthly_obs_by_tod <- temp_obs %>%
+monthly_obs_by_tod <- tod_temp_obs %>%
   group_by(name, wmonth, wtod) %>%
   summarise(avt = mean(air_temp),
             maxt = max(air_temp),
@@ -464,7 +480,7 @@ monthly_obs_by_tod <- temp_obs %>%
             )
 
 # Group time of day observations by year
-yearly_obs_by_tod <- temp_obs %>%
+yearly_obs_by_tod <- tod_temp_obs %>%
   group_by(name, wyear, wtod) %>%
   summarise(avt = mean(air_temp),
             maxt = max(air_temp),
@@ -481,7 +497,7 @@ yearly_obs_by_tod <- temp_obs %>%
 library(knitr)
 
 # for each location calculate average of TOD mean, max, min, spread (max-min)
-summary_all_obs_by_tod <- temp_obs %>%
+summary_all_obs_by_tod <- tod_temp_obs %>%
   group_by(name, wtod) %>%
   summarise(avt = mean(air_temp),
             maxt = max(air_temp),
@@ -519,7 +535,7 @@ typical_tod_temp_by_loc <- summary_avt_by_tod %>%
     daytime = round(day, digits=1),
     evening = round(eve, digits=1),
     overnight = round(night, digits=1),
-    meantemp = round(mean(morn, day, eve, night), digits=1)
+    meantemp = round(mean(sum(morn, day, eve, night)/4), digits=1)
     ) %>%
   arrange(meantemp)
 
@@ -590,7 +606,7 @@ ggplot(daily_obs_by_tod) +
 #### Smooth graph of location temperature over date range, per time of day
 
 ```{r}
-ggplot(temp_obs) +
+ggplot(tod_temp_obs) +
   geom_smooth(aes(x=wdate, y=air_temp, color=name)) +
   facet_wrap( ~ wtod, nrow=2)
 ```
