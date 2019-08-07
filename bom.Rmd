@@ -348,6 +348,16 @@ obs_data <- obs_data %>%
   ungroup()
 ```
 
+### Round times to nearest half hour
+
+*TODO*
+
+Note: Most data is to the closest half hour, but
+      occasionally there are readings that have odd times.
+      These make graphing, in particular, less effective.
+      The solution is to round these to the closest half hour
+      that is missing.
+
 
 # Analyse Bom data for location-based temperature information
 
@@ -369,6 +379,13 @@ temp_obs <- obs_data %>%
 ```
 
 
+### Remove non-full day data
+
+To prevent erroneous maximum and minimums for days that only contain the last few hours of data (assuming data is downloaded around 10pm).
+
+*TODO*
+
+
 ## Find mean temperature for location over period covered by data
 
 ```{r}
@@ -378,7 +395,7 @@ daily_mean_loc <- temp_obs %>%
   summarise(meantemp = mean(air_temp))
 ```
 
-### Graph daily mean temperature over date range
+#### Graph daily mean temperature over date range
 
 ```{r}
 ggplot(daily_mean_loc) +
@@ -422,8 +439,82 @@ coldest_time_loc <- coldest_times_loc %>%
   filter(avg_min==min(avg_min))
 ```
 
+### Prepare dataframes for graphing
 
-### Show the (usually) hottest time of day per location
+Prior to graphing time based information, the string-based time needs to be converted to `POSIXct` format. The date isn't shown in the graphs, so we leave the default of today. Note that we set the time zone to `UTC` here and use it in the graphs to prevent unintended timeshifts in displayed times.
+
+```{r}
+hottest_times_posix <- hottest_times_loc %>% mutate(posix_time=as.POSIXct(hottest_time, format = "%H:%M", tz="UTC"))
+
+coldest_times_posix <- coldest_times_loc %>% mutate(posix_time=as.POSIXct(coldest_time, format = "%H:%M", tz="UTC"))
+```
+
+
+#### Display bar Graph of hottest times of day
+
+```{r, warning=FALSE, message=FALSE}
+library(scales)
+
+# focus on relevant times - easier to see,
+# and removes some erroneous data from evenings (incomplete days)
+limits_morning_to_eve=c(
+  as.POSIXct("10:00", format = "%H:%M", tz="UTC"),
+  as.POSIXct("18:00", format = "%H:%M", tz="UTC"))
+
+ggplot(hottest_times_posix) +
+  geom_col(mapping=aes(x=posix_time, y=avg_max, fill=freq), position=position_dodge()) +
+  #scale_x_discrete(name="hottest_times", breaks=map(seq(0,23), ~ sprintf("%0.2d:00", .))) +
+  scale_x_datetime(
+    breaks=date_breaks("1 hours"),
+    limits=limits_morning_to_eve, # easier to see
+    labels=date_format("%H:%M", tz="UTC"), # same tz as when created
+    expand = c(0, 0) # deals with not having data at every time
+    ) +
+  theme(axis.text.x= element_text(angle=90)) +
+  xlab("hottest times") +
+  ylab("average maximum") +
+  facet_wrap( ~ name, nrow=2)
+```
+
+
+#### Display bar Graph of coldest times of day
+
+```{r, warning=FALSE, message=FALSE}
+library(scales)
+
+# this doesn't work - need factors
+#breaks_noon_to_noon=c(
+#  seq(as.POSIXct("12:00", format = "%H:%M", tz="UTC"),
+#      as.POSIXct("24:00", format = "%H:%M", tz="UTC"),
+#      "1 hours"),
+#  seq(as.POSIXct("00:00", format = "%H:%M", tz="UTC"),
+#      as.POSIXct("12:00", format = "%H:%M", tz="UTC"),
+#      "1 hours")
+#)
+
+# this prevents huge gap in most of x axis,
+# and removes some erroneous data from evenings (incomplete days)
+limits_midnight_to_morning=c(
+  as.POSIXct("00:00", format = "%H:%M", tz="UTC"),
+  as.POSIXct("08:00", format = "%H:%M", tz="UTC"))
+
+ggplot(coldest_times_posix) +
+  geom_col(mapping=aes(x=posix_time, y=avg_min, fill=freq), position=position_dodge()) +
+  scale_x_datetime(
+    breaks=date_breaks("1 hours"),
+    #breaks=breaks_noon_to_noon, # doesn't work
+    limits=limits_midnight_to_morning, # easier to see
+    labels=date_format("%H:%M", tz="UTC"), # same tz as when created
+    expand = c(0, 0) # deals with not having data at every time
+    ) +
+  theme(axis.text.x=element_text(angle=90)) +
+  xlab("coldest times") +
+  ylab("average minimum") +
+  facet_wrap( ~ name, nrow=2)
+```
+
+
+#### Show the (usually) hottest time of day per location as a table
 
 ```{r, warning=FALSE, message=FALSE}
 library(knitr)
@@ -431,7 +522,7 @@ kable(hottest_time_loc, digits=2)
 ```
 
 
-### Show the (usually) coldest time of day per location
+#### Show the (usually) coldest time of day per location as a table
 
 ```{r, warning=FALSE, message=FALSE}
 library(knitr)
@@ -439,9 +530,6 @@ kable(coldest_time_loc, digits=2)
 ```
 
 
-### Graph hottest and coldest times of day
-
-*TODO*
 
 
 ## Analyse BoM data for location-based time of day temperature information
@@ -540,8 +628,7 @@ ggplot(daily_obs_by_tod) +
 
 ### Calculate min, max, average and spread of temps over all observations for each time of day
 
-```{r, warning=FALSE, message=FALSE}
-library(knitr)
+```{r}
 
 # for each location calculate average of TOD mean, max, min, spread (max-min)
 summary_all_obs_by_tod <- tod_temp_obs %>%
@@ -551,7 +638,13 @@ summary_all_obs_by_tod <- tod_temp_obs %>%
             mint = min(air_temp),
             spreadt = max(air_temp) - min(air_temp)
             )
+```
 
+
+#### Display time of day temperature stats as a table
+
+```{r, warning=FALSE, message=FALSE}
+library(knitr)
 #View(summary_all_obs_by_tod)
 kable(summary_all_obs_by_tod, digits=2)
 ```
@@ -570,7 +663,21 @@ summary_avt_by_tod <- daily_obs_by_tod %>%
             min_avt = min(avt),
             spread_avt = max(avt) - min(avt)
             )
+```
 
+
+#### Display a bar graph of the typical (average) temp by time of day
+
+```{r}
+ggplot(summary_avt_by_tod) +
+  geom_col(mapping=aes(x=wtod, y=mean_avt, fill=name), position=position_dodge())
+```
+
+
+#### Display typical (average) temp as a table
+
+```{r, warning=FALSE, message=FALSE}
+library(knitr)
 # for each loc provide typical (average) temp for each time of day for viewing
 typical_tod_temp_by_loc <- summary_avt_by_tod %>%
   select(name, wtod, mean_avt) %>%
@@ -589,6 +696,7 @@ typical_tod_temp_by_loc <- summary_avt_by_tod %>%
 #head(typical_tod_temp_by_loc)
 kable(typical_tod_temp_by_loc, digits=2)
 ```
+
 
 
 ### Compare monthly temperature data
@@ -686,6 +794,8 @@ obs <- obs_data %>%
 * `purrr` [`map`](https://hookedondata.org/going-off-the-map/)
 * `purrr` [Lessons and Examples](https://jennybc.github.io/purrr-tutorial/index.html)
 * `ggplot2` [Essentials](http://www.sthda.com/english/wiki/ggplot2-essentials)
+* `ggplot` [Axis tick marks and labels](http://www.sthda.com/english/wiki/ggplot2-axis-ticks-a-guide-to-customize-tick-marks-and-labels)
+* `ggplot` [Plotting Dates, Hours and Minutes](https://learnr.wordpress.com/2010/02/25/ggplot2-plotting-dates-hours-and-minutes/)
 * [R Markdown](https://ourcodingclub.github.io/2016/11/24/rmarkdown-1.html)
 
 # Related Work
