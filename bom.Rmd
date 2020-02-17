@@ -1,7 +1,7 @@
 ---
 title: "Analysis of Data from The Australian Bureau of Meteorology (BoM)"
 author: codeinthecreek
-date: 2019
+date: 2019-2020
 output: html_document
 ---
 
@@ -9,6 +9,8 @@ output: html_document
 ```{r setup, include=FALSE}
 # this code chunk should be run prior to any of the following R code
 knitr::opts_chunk$set(echo = TRUE, eval = TRUE)
+# all R code requires the tidyverse package
+library(tidyverse)
 ```
 
 # Outline
@@ -34,7 +36,7 @@ There are a few packages that need to be installed to run the R code within this
 
 Each of these can be installed with `install.packages("<name_of_package>")` at the `R` console, or via RStudio's `Tools` menu with `Install Packages`.
 
-In all of the following `R` code snippets, it is implied that the `tidyverse` library has been loaded. For clarity this is done here, rather than invisibly in the setup chunk, with:
+In all of the following `R` code snippets, it is implied that the `tidyverse` library has been loaded, as per the `setup` code chunk. This can also be done manually with the following:
 
 ```{r, warning=FALSE, message=FALSE}
 library(tidyverse)
@@ -254,7 +256,8 @@ The following code will process all the files matching the `filename_pattern` re
 library(jsonlite)
 
 #data_dir <- "./data"
-data_dir <- "./tmp"
+data_dir <- "./tmp/201907"
+#data_dir <- "./tmp/201912"
 
 # some example filename patterns - modify to suit
 #filename_pattern <- "(Townsville_AP|Townsville_MS|Cairns|Cairns_RC|Cooktown|Bowen_AP|Mackay_AP|Rockhampton|Brisbane_AP|Darwin_AP)-2019-07-.*\\.json$"
@@ -348,6 +351,7 @@ obs_data <- obs_data %>%
   ungroup()
 ```
 
+
 ### Round times to nearest half hour
 
 *TODO*
@@ -379,6 +383,14 @@ temp_obs <- obs_data %>%
 ```
 
 
+### Optionally filter temperature observations for locations of interest
+
+```{r}
+temp_obs <- temp_obs %>%
+  filter(name %in% c("Brisbane Airport", "Townsville", "Cairns Racecourse", "Darwin Airport"))
+```
+
+
 ### Remove non-full day data
 
 To prevent erroneous maximum and minimums for days that only contain the last few hours of data (assuming data is downloaded around 10pm).
@@ -386,10 +398,10 @@ To prevent erroneous maximum and minimums for days that only contain the last fe
 *TODO*
 
 
-## Find mean temperature for location over period covered by data
+## Find mean temperature for locations of interest over period covered by data
 
 ```{r}
-# mean daily temp per location
+# mean daily temp per location of interest
 daily_mean_loc <- temp_obs %>%
   group_by(name, wymd) %>%
   summarise(meantemp = mean(air_temp))
@@ -406,7 +418,7 @@ ggplot(daily_mean_loc) +
 ## Find hottest and coldest times of day
 
 ```{r}
-# find hottest time of day, and it's avg temp, per location
+# find hottest time of day, and it's avg temp, per location of interest
 # note that time intervals are half hourly, so don't need to bin times
 
 # TODO: add wind_dir to test what most common wind_dir is during
@@ -722,7 +734,7 @@ ggplot(monthly_obs_by_tod) +
   geom_point(aes(x=wmonth, y=avt, color=name, shape=name)) +
   scale_x_discrete(name="wmonth", limits=1:12) +
   facet_wrap( ~ wtod, nrow=2)
-```
+``` 
 
 
 #### Box plot typical location temperature per months and time of day
@@ -771,17 +783,95 @@ yearly_obs_by_tod <- tod_temp_obs %>%
 ```
 
 
-## Other climate statistics
+## Other Climate Statistics
+
+### Rainfall Statistics
+
+```{r, eval=FALSE, echo=FALSE}
+library(lubridate)
+
+# separate rainfall data (rain_trace)
+# convert rain_trace to double (as by default it turns out as a string)
+# and drop rows with missing values (as.numeric() converts '-' to NA)
+# so that don't end up with NA's breaking stats, then order by date_time for each location (name)
+# and normalise dates to 9am when rain trace ends
+
+rain_obs <- obs_data %>%
+  select(name, date_time, rel_hum, rain_trace) %>%
+  mutate(rain_trace = as.numeric(rain_trace)) %>%
+  drop_na() %>% # or use: filter(!is.na(rain_trace))
+  arrange(name, date_time) %>%
+  mutate(wtime = sprintf("%02d:%02d", hour(date_time), minute(date_time))) %>%
+  mutate(whr = hour(date_time)) %>%
+  mutate(wmin= minute(date_time)) %>%
+  mutate(wymd = if_else((whr < 9 | (whr == 9 & wmin == 0)),
+                         as_date(date_time - period(1, "day")),
+                         as_date(date_time))
+         )
+
+# as rain_trace is cummulative, get difference between readings for rain in that time period
+# note that this requires the readings to be in order (per location)
+rain_obs <- rain_obs %>%
+  group_by(name, wymd) %>%
+  mutate(wrain = rain_trace - lag(rain_trace))
+
+```
+
+#### Total Daily Rain by Location
+
+```{r}
+# total daily rain per location of interest
+daily_rain_loc <- rain_obs %>%
+  filter(name %in% c("Mackay Airport", "Townsville", "Cairns", "Cooktown", "Darwin Airport")) %>%
+  filter(whr==9 & wmin==0) # rain_trace at 09:00 is total for previous 24 hours
+```
+
+```{r}
+# filter for days where rainfall exceeds a threshold (eg 2.5mm)
+daily_rain_loc_thresh <- daily_rain_loc %>%
+  filter(rain_trace >= 2.5)
+
+ggplot(daily_rain_loc_thresh) +
+  geom_point(aes(x=wymd, y=rain_trace, color=name, shape=name))
+```
+
+
+
+#### rain by hour of day over date range for each location
+
+```{r}
+# TODO
+```
+
+
+#### most frequent time of day (hour) for rain / wettest time of day
+
+```{r}
+# TODO
+```
+
+
+### Wind Direction and Speed Statistics
 
 *TODO*
 
 ```{r, eval=FALSE, echo=FALSE}
 # select fields of interest
-obs <- obs_data %>%
-  select(name, date_time, air_temp, apparent_t, rel_hum, rain_trace)
+wind_obs <- obs_data %>%
+  select(name, date_time, wind_dir, wind_spd_kmh) %>%
+  drop_na() %>%
+  mutate(whr = hour(date_time)) %>%
+  mutate(wymd = as_date(date_time)) %>%
+  mutate(wtime = sprintf("%02d:%02d", hour(date_time), minute(date_time)))
 
+# by day, loc for each hour of the day
+# most common wind direction and speed
+# wind_dir ordered by strength (speed) and average speed
+# 
+# 
 # TODO
 ```
+
 
 
 # References
